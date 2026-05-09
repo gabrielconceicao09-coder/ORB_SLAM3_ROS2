@@ -30,6 +30,7 @@ include_directories(
   ${ORB_SLAM3_ROOT_DIR}/include
   ${ORB_SLAM3_ROOT_DIR}/include/CameraModels
   ${ORB_SLAM3_ROOT_DIR}/Thridparty/Sophus
+  ${ORB_SLAM3_ROOT_DIR}/Thridparty/DBow2
 )
 
 link_directories(
