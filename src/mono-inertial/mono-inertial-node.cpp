@@ -1,11 +1,11 @@
 
-#include "monocular-inertial-slam-node.hpp"
+#include "mono-inertial-node.hpp"
 
 #include<opencv2/core/core.hpp>
 
 using std::placeholders::_1;
 
-MonocularInertialSlamNode::MonocularInertialSlamNode(ORB_SLAM3::System* pSLAM)
+MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
 :   Node("ORB_SLAM3_ROS2")
 {
     m_SLAM = pSLAM;
@@ -13,12 +13,12 @@ MonocularInertialSlamNode::MonocularInertialSlamNode(ORB_SLAM3::System* pSLAM)
     m_image_subscriber = this->create_subscription<ImageMsg>(
         "camera",
         10,
-        std::bind(&MonocularInertialSlamNode::GrabImage, this, std::placeholders::_1));
+        std::bind(&MonoInertialNode::GrabImage, this, std::placeholders::_1));
     
     imu_subscriber = this->create_subscription<ImuMsg>(
         "imu",
         1000,
-        std::bind(&MonocularInertialSlamNode::GrabImu, this, std::placeholders::_1));
+        std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
     );
 
     twc_publisher = this->create_publisher<TfMsg>(
@@ -33,15 +33,15 @@ MonocularInertialSlamNode::MonocularInertialSlamNode(ORB_SLAM3::System* pSLAM)
 
     timer_ = this->create_wall_timer(
         20ms,
-        std::bind(&MonocularInertialSlamNode::timer_callback, this) // o timer_ é chamado pelo node::spin() e ta bindado com o método timer_callback
+        std::bind(&MonoInertialNode::timer_callback, this) // o timer_ é chamado pelo node::spin() e ta bindado com o método timer_callback
     )
 
-    syncThread_ = new std::thread(&StereoInertialNode::SyncWithImu, this);
+    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
 
     std::cout << "slam changed" << std::endl;
 }
 
-MonocularInertialSlamNode::~MonocularInertialSlamNode()
+MonoInertialNode::~MonoInertialNode()
 {
     //Delete sync thread
     syncThread_->join();
@@ -54,7 +54,7 @@ MonocularInertialSlamNode::~MonocularInertialSlamNode()
     m_SLAM->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 }
 
-void MonocularInertialSlamNode::GrabImu(const ImuMsg::SharedPtr msg)
+void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 {
     //Não entendi muito bem, mas de alguma forma esse Mutex impede que outras threads alterem imuBuff_ ao mesmo tempo
     buffImuMutex_.lock();
@@ -62,14 +62,14 @@ void MonocularInertialSlamNode::GrabImu(const ImuMsg::SharedPtr msg)
     bufImuMutex.unlock();
 }
 
-void MonocularInertialSlamNode::GrabImage(const ImageMsg::SharedPtr msg)
+void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
 {
     bufImgMutex_.lock();
     imgBuf_.push(msg);
     bufImgMutex_.lock();
 }
 
-cv::Mat MonocularInertialSlamNode::GetImage(const ImageMsg::SharedPtr msg)
+cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 {
 
     // Copy the ros image message to cv::Mat.
@@ -100,7 +100,7 @@ cv::Mat MonocularInertialSlamNode::GetImage(const ImageMsg::SharedPtr msg)
     */
 }
 
-Sophus::SE3f MonocularInertialSlamNode::SyncWithImu_Track()
+Sophus::SE3f MonoInertialNode::SyncWithImu_Track()
 {   
     
     while(1) //Sempre rodando, i guess
@@ -142,7 +142,7 @@ Sophus::SE3f MonocularInertialSlamNode::SyncWithImu_Track()
     }
 }
 
-TfMsg MonocularInertialSlamNode::MakeTfMsg(const Sophus::SE3f::SharedPtr Tcm)
+TfMsg MonoInertialNode::MakeTfMsg(const Sophus::SE3f::SharedPtr Tcm)
 {
     Sophus::SE3f Tmc = Tcm.inverse();
     TfMsg transf_msg;
@@ -161,7 +161,7 @@ TfMsg MonocularInertialSlamNode::MakeTfMsg(const Sophus::SE3f::SharedPtr Tcm)
     return transf_msg;
 }
 
-void MonocularInertialSlamNode::timer_callback()
+void MonoInertialNode::timer_callback()
 {
     Sophus::SE3f::SharedPtr Tf_;
     TfMsg msg;
