@@ -4,7 +4,7 @@
 #include <chrono>
 
 #include "rclcpp/rclcpp.hpp"
-#include "monocular-inertial-slam-node.hpp"
+#include "mono-inertial-node.hpp"
 
 #include "System.h"
 
@@ -13,7 +13,7 @@ int main(int argc, char **argv)
 {
     if(argc < 3)
     {
-        std::cerr << "\nUsage: ros2 run orbslam mono path_to_vocabulary path_to_settings" << std::endl;
+        std::cerr << "\nUsage: ros2 run orbslam mono-inertial path_to_vocabulary path_to_settings" << std::endl;
         return 1;
     }
 
@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     bool visualization = true;
     ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::IMU_MONOCULAR, visualization);
 
-    auto node = std::make_shared<MonocularInertialSlamNode>(&SLAM);
+    auto node = std::make_shared<MonoInertialNode>(&SLAM);
     std::cout << "============================ " << std::endl;\
 
     rclcpp::spin(node);
