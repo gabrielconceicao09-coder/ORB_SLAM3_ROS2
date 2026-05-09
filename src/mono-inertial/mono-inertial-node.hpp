@@ -1,5 +1,5 @@
-#ifndef __MONOCULAR_INERTIAL_SLAM_NODE_HPP__
-#define __MONOCULAR_INERTIAL_SLAM_NODE_HPP__
+#ifndef __MONO_INERTIAL_NODE_HPP__
+#define __MONO_INERTIAL_NODE_HPP__
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -26,12 +26,12 @@ using PclMsg = sensor_msgs::msg::PointCloud2;
 #TODO: Integrar Tf2 pra publicar tfs e receber tfs pelos tf2_transform_publisher, tf2_static_transform_publisher, etc.
 #Inclusive pra que seja melhor integrar todas as transforms pra suprir as transforms necessárias pelo nav2 em outro módulo.
 
-class MonocularInertialSlamNode : public rclcpp::Node
+class MonoInertialNode : public rclcpp::Node
 {
 public:
-    MonocularInertialSlamNode(ORB_SLAM3::System* pSLAM);
+    MonoInertialNode(ORB_SLAM3::System* pSLAM);
 
-    ~MonocularInertialSlamNode();
+    ~MonoInertialNode();
 
 private:
 
