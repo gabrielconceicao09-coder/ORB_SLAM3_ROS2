@@ -26,10 +26,10 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         10
     );
 
-    timer_ = this->create_wall_timer(
+    /*timer_ = this->create_wall_timer(
         20ms,
         std::bind(&MonoInertialNode::timer_callback, this) // o timer_ é chamado pelo node::spin() e ta bindado com o método timer_callback
-    )
+    )*/
 
     syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
 
@@ -74,10 +74,9 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
     {
         m_cvImPtr = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::MONO8);
     }
-    catch (cv_bridge::Exception& e)
+    catch (cv_bridge::Exception & e)
     {
         RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
-        return;
     }
 
     if (m_cvImPtr->image.type() == 0)
@@ -110,7 +109,7 @@ void MonoInertialNode::SyncWithImu_Track()
         bufImgMutex_.unlock();
 
         vector<ORB_SLAM3::IMU::Point> vImuMeas;
-        bufMutex_.lock();
+        bufImuMutex_.lock();
         if (!imuBuf_.empty())
         {
             //Load imu measurements from buffer
@@ -124,7 +123,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 imuBuf_.pop();
             }
         }
-        bufMutex_.unlock();
+        bufImuMutex_.unlock();
         
         Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
         
