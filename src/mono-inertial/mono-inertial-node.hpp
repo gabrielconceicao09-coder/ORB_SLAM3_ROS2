@@ -42,8 +42,6 @@ private:
     void GrabImu(const ImuMsg::SharedPtr msg);
     cv::Mat GetImage(const ImageMsg::SharedPtr msg);
     void SyncWithImu_Track(); //retorna o resultado do tracking do orbslam3, após sincronizar a imagem e o imu
-    //TfMsg MakeTfMsg(const Sophus::SE3f Tcm); //inverte transformação e monta mensagem de tf para publição
-    void timer_callback();
 
 
     ORB_SLAM3::System* m_SLAM;

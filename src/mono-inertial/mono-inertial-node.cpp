@@ -26,11 +26,6 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         10
     );
 
-    /*timer_ = this->create_wall_timer(
-        20ms,
-        std::bind(&MonoInertialNode::timer_callback, this) // o timer_ é chamado pelo node::spin() e ta bindado com o método timer_callback
-    )*/
-
     syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track(), this);
 
     std::cout << "slam changed" << std::endl;
@@ -88,10 +83,6 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
         std::cerr << "Error image type" << std::endl;
         return m_cvImPtr->image.clone();
     }
-    /* Aqui não é o lugar pra chamar. Tem que sincronizar o Imu com as Imagens antes.
-    std::cout<<"one frame has been sent"<<std::endl;
-    m_SLAM->TrackMonocular(m_cvImPtr->image, Utility::StampToSec(msg->header.stamp));
-    */
 }
 
 void MonoInertialNode::SyncWithImu_Track()
@@ -165,44 +156,4 @@ void MonoInertialNode::SyncWithImu_Track()
         //TODO: Talvez precise colocar um sleep igual o q tem em stereo-inertial.
 
     }
-}
-
-/*TfMsg MonoInertialNode::MakeTfmsg(const Sophus::SE3f::SharedPtr Tcm)
-{
-    Sophus::SE3f Tmc = Tcm.inverse();
-    tf2::Transform Tmc_tf //Montando transformada tf2 a partir do SE3f Tmc
-    Tmc_tf.rotation.x = Tmc.translation().x();
-    Tmc_tf.rotation.y = Tmc.translation().y();
-    Tmc_tf.rotation.z = Tmc.translation().z();
-    Tmc_tf.orientation.w = Tmc.unit_quaternion().coeffs().w();
-    Tmc_tf.orientation.x = Tmc.unit_quaternion().coeffs().x();
-    Tmc_tf.orientation.y = Tmc.unit_quaternion().coeffs().y();
-    Tmc_tf.orientation.z = Tmc.unit_quaternion().coeffs().z();
-    
-    TfMsg transf_msg;
-    try {
-        odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
-        tf2::Transform Tmap_odom = Tmc_f * odom_to_base_msg.Transform.inverse(); //Calculando transformada map => odom pedida pelo nav2
-        transf_msg.Transform = Tmap_odom;
-        transf_msg.frame_id = "map";
-        transf_msg.child_frame_id = "odom";
-        return transf_msg;
-    } catch (const tf2::TransformException & ex) {
-        RCLCPP_INFO( this->get_logger(), "Could not find odom to base_link transform");
-        return;
-    }
-    
-}*/
-
-void MonoInertialNode::timer_callback()
-{
-    TfMsg msg;
-    bufTfMutex_.lock(); //copiei a estratégia buffer e lock com mutex
-    Sophus::SE3f::SharedPtr Tf_;
-    Tf_ = tfBuf_.front();
-    //msg = MakeTfMsg(Tf_);
-    tfBuf_.pop();
-    bufTfMutex_.unlock();
-
-    tf_broadcaster_->sendTransform(msg);
 }
