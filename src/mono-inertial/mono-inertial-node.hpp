@@ -26,8 +26,8 @@ using ImageMsg = sensor_msgs::msg::Image;
 using TfMsg = geometry_msgs::msg::TransformStamped;
 using PclMsg = sensor_msgs::msg::PointCloud2;
 
-#TODO: Integrar Tf2 pra publicar tfs e receber tfs pelos tf2_transform_publisher, tf2_static_transform_publisher, etc.
-#Inclusive pra que seja melhor integrar todas as transforms pra suprir as transforms necessárias pelo nav2 em outro módulo.
+//TODO Integrar Tf2 pra publicar tfs e receber tfs pelos tf2_transform_publisher, tf2_static_transform_publisher, etc.
+//Inclusive pra que seja melhor integrar todas as transforms pra suprir as transforms necessárias pelo nav2 em outro módulo.
 
 class MonoInertialNode : public rclcpp::Node
 {
@@ -41,8 +41,8 @@ private:
     void GrabImage(const ImageMsg::SharedPtr msg);
     void GrabImu(const ImuMsg::SharedPtr msg);
     cv::Mat GetImage(const ImageMsg::SharedPtr msg);
-    Sophus::SE3f SyncWithImu_Track(); //retorna o resultado do tracking do orbslam3, após sincronizar a imagem e o imu
-    TfMsg MakeTfMsg(const Sophus::SE3f Tcm); //inverte transformação e monta mensagem de tf para publição
+    void SyncWithImu_Track(); //retorna o resultado do tracking do orbslam3, após sincronizar a imagem e o imu
+    //TfMsg MakeTfMsg(const Sophus::SE3f Tcm); //inverte transformação e monta mensagem de tf para publição
     void timer_callback();
 
 
@@ -60,18 +60,18 @@ private:
     //Tracked transform buffer pointer and listened transform buffer
     queue<TfMsg::SharedPtr> tfBuf_;
     std::mutex bufTfMutex_;
-    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
 
     //Define subscribers:
     rclcpp::Subscription<ImageMsg>::SharedPtr m_image_subscriber;
     rclcpp::Subscription<ImuMsg>::SharedPtr imu_subscriber;
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
 
     //Define publishers:
-    rclcpp::Publisher<TfMsg>::SharedPtr twc_publisher; //publisher pra publicar a transformação map => camera (fixa em relação ao base_link)
     rclcpp::Publisher<PclMsg>::SharedPtr pointcloud_publisher; //publisher para publicar pointclouds derivadas dos features detectados TODO: É informação útil?
-    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     //Não entendi bem o que são esses bools:
     bool doRectify_;

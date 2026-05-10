@@ -21,15 +21,15 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
     );
 
-    pcl_publisher = this->create_publisher<PclMsg>(
+    pointcloud_publisher = this->create_publisher<PclMsg>(
         "PCLTOPIC"
         10
     );
 
-    /*timer_ = this->create_wall_timer(
+    timer_ = this->create_wall_timer(
         20ms,
         std::bind(&MonoInertialNode::timer_callback, this) // o timer_ é chamado pelo node::spin() e ta bindado com o método timer_callback
-    )*/
+    )
 
     syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
 
@@ -52,9 +52,9 @@ MonoInertialNode::~MonoInertialNode()
 void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 {
     //Não entendi muito bem, mas de alguma forma esse Mutex impede que outras threads alterem imuBuff_ ao mesmo tempo
-    buffImuMutex_.lock();
+    bufImuMutex_.lock();
     imuBuf_.push(msg);
-    bufImuMutex.unlock();
+    bufImuMutex_.unlock();
 }
 
 void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
@@ -95,7 +95,7 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
     */
 }
 
-Sophus::SE3f MonoInertialNode::SyncWithImu_Track()
+void MonoInertialNode::SyncWithImu_Track()
 {   
     
     while(1) //Sempre rodando, i guess
@@ -140,8 +140,8 @@ Sophus::SE3f MonoInertialNode::SyncWithImu_Track()
         
         TfMsg transf_msg;
         try {
-            odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
-            tf2::Transform Tmap_odom = Tmc_f * odom_to_base_msg.Transform.inverse(); //Calculando transformação map => odom pedida pelo nav2
+            TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
+            tf2::Transform Tmap_odom = Tmc_tf * odom_to_base_msg.Transform.inverse(); //Calculando transformação map => odom pedida pelo nav2
             transf_msg.Transform = Tmap_odom;
             transf_msg.header.stamp = this->get_clock()->now();
             transf_msg.frame_id = "map";
@@ -159,7 +159,7 @@ Sophus::SE3f MonoInertialNode::SyncWithImu_Track()
     }
 }
 
-TfMsg MonoInertialNode::MakeTfmsg(const Sophus::SE3f::SharedPtr Tcm)
+/*TfMsg MonoInertialNode::MakeTfmsg(const Sophus::SE3f::SharedPtr Tcm)
 {
     Sophus::SE3f Tmc = Tcm.inverse();
     tf2::Transform Tmc_tf //Montando transformada tf2 a partir do SE3f Tmc
@@ -184,7 +184,7 @@ TfMsg MonoInertialNode::MakeTfmsg(const Sophus::SE3f::SharedPtr Tcm)
         return;
     }
     
-}
+}*/
 
 void MonoInertialNode::timer_callback()
 {
@@ -193,7 +193,7 @@ void MonoInertialNode::timer_callback()
 
     bufTfMutex.lock(); //copiei a estratégia buffer e lock com mutex
     Tf_ = tfBuf_.front();
-    msg = MakeTfMsg(Tf_);
+    //msg = MakeTfMsg(Tf_);
     tfBuf_.pop();
     bufTfMutex_.unlock();
 
