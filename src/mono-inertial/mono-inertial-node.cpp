@@ -140,8 +140,17 @@ void MonoInertialNode::SyncWithImu_Track()
         TfMsg transf_msg;
         try {
             TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
-            tf2::Transform Tmap_odom = Tmc_tf * odom_to_base_msg.transform.inverse(); //Calculando transformação map => odom pedida pelo nav2
-            transf_msg.transform = Tmap_odom;
+            tf2::Transform Todom_base = odom_to_base_msg.transform;
+            tf2::Transform Tmap_odom = Tmc_tf * Todom_base.inverse(); //Calculando transformação map => odom pedida pelo nav2
+
+            transf_msg.transform.rotation.x = Tmc.translation().x();
+            transf_msg.rotation.y = Tmc.translation().y();
+            transf_msg.rotation.z = Tmc.translation().z();
+            transf_msg.orientation.w = Tmc.unit_quaternion().coeffs().w();
+            transf_msg.orientation.x = Tmc.unit_quaternion().coeffs().x();
+            transf_msg.orientation.y = Tmc.unit_quaternion().coeffs().y();
+            transf_msg.orientation.z = Tmc.unit_quaternion().coeffs().z();
+            
             transf_msg.header.stamp = this->get_clock()->now();
             transf_msg.header.frame_id = "map";
             transf_msg.child_frame_id = "odom";
