@@ -6,8 +6,11 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/pointcloud2.hpp"
 #include "sensor_msgs/msg/pointcloud.hpp"
-#include "geometry_msgs/msg/transform.hpp"
-#include "geometry_msgs/msg/transformstamped.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+#include "tf2_ros/transform_broadcaster.h"
+#include "tf2_ros/static_transform_broadcaster.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
 
 #include <cv_bridge/cv_bridge.h>
 
@@ -54,17 +57,21 @@ private:
     queue<ImageMsg::SharedPtr> imgBuf_; 
     std::mutex bufImgMutex_;
 
-    //Transform buffer pointer
+    //Tracked transform buffer pointer and listened transform buffer
     queue<TfMsg::SharedPtr> tfBuf_;
     std::mutex bufTfMutex_;
+    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
 
     //Define subscribers:
     rclcpp::Subscription<ImageMsg>::SharedPtr m_image_subscriber;
     rclcpp::Subscription<ImuMsg>::SharedPtr imu_subscriber;
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
 
     //Define publishers:
     rclcpp::Publisher<TfMsg>::SharedPtr twc_publisher; //publisher pra publicar a transformação map => camera (fixa em relação ao base_link)
     rclcpp::Publisher<PclMsg>::SharedPtr pointcloud_publisher; //publisher para publicar pointclouds derivadas dos features detectados TODO: É informação útil?
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     //Não entendi bem o que são esses bools:
     bool doRectify_;
