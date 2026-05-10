@@ -150,7 +150,7 @@ void MonoInertialNode::SyncWithImu_Track()
             transf_msg.orientation.x = Tmc.unit_quaternion().coeffs().x();
             transf_msg.orientation.y = Tmc.unit_quaternion().coeffs().y();
             transf_msg.orientation.z = Tmc.unit_quaternion().coeffs().z();
-            
+
             transf_msg.header.stamp = this->get_clock()->now();
             transf_msg.header.frame_id = "map";
             transf_msg.child_frame_id = "odom";
@@ -196,14 +196,13 @@ void MonoInertialNode::SyncWithImu_Track()
 
 void MonoInertialNode::timer_callback()
 {
-    Sophus::SE3f::SharedPtr Tf_;
     TfMsg msg;
-
     bufTfMutex_.lock(); //copiei a estratégia buffer e lock com mutex
+    Sophus::SE3f::SharedPtr Tf_;
     Tf_ = tfBuf_.front();
     //msg = MakeTfMsg(Tf_);
     tfBuf_.pop();
     bufTfMutex_.unlock();
 
-    tf_broadcaster->sendTransform(msg);
+    tf_broadcaster_->sendTransform(msg);
 }
