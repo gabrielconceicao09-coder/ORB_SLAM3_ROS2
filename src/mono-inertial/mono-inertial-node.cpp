@@ -26,7 +26,7 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         10
     );
 
-    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track(), this);
+    syncThread_ = new std::thread(MonoInertialNode::SyncWithImu_Track(), this);
 
     std::cout << "slam changed" << std::endl;
 }
@@ -120,13 +120,13 @@ void MonoInertialNode::SyncWithImu_Track()
         
         Sophus::SE3f Tmc = Tcm.inverse();
         tf2::Transform Tmc_tf //Montando transformada tf2 a partir do SE3f Tmc
-        Tmc_tf.rotation.x = Tmc.translation().x();
-        Tmc_tf.rotation.y = Tmc.translation().y();
-        Tmc_tf.rotation.z = Tmc.translation().z();
-        Tmc_tf.orientation.w = Tmc.unit_quaternion().coeffs().w();
-        Tmc_tf.orientation.x = Tmc.unit_quaternion().coeffs().x();
-        Tmc_tf.orientation.y = Tmc.unit_quaternion().coeffs().y();
-        Tmc_tf.orientation.z = Tmc.unit_quaternion().coeffs().z();
+        Tmc_tf.translation().x() = Tmc.translation().x();
+        Tmc_tf.translation().y() = Tmc.translation().y();
+        Tmc_tf.translation().z() = Tmc.translation().z();
+        Tmc_tf.rotation().w() = Tmc.unit_quaternion().coeffs().w();
+        Tmc_tf.rotation().x() = Tmc.unit_quaternion().coeffs().x();
+        Tmc_tf.rotation().y() = Tmc.unit_quaternion().coeffs().y();
+        Tmc_tf.rotation().z() = Tmc.unit_quaternion().coeffs().z();
         
         TfMsg transf_msg;
         try {
@@ -134,13 +134,13 @@ void MonoInertialNode::SyncWithImu_Track()
             tf2::Transform Todom_base = odom_to_base_msg.transform;
             tf2::Transform Tmap_odom = Tmc_tf * Todom_base.inverse(); //Calculando transformação map => odom pedida pelo nav2
 
-            transf_msg.transform.rotation.x = Tmc.translation().x();
-            transf_msg.transform.rotation.y = Tmc.translation().y();
-            transf_msg.transform.rotation.z = Tmc.translation().z();
-            transf_msg.transform.orientation.w = Tmc.unit_quaternion().coeffs().w();
-            transf_msg.transform.orientation.x = Tmc.unit_quaternion().coeffs().x();
-            transf_msg.transform.orientation.y = Tmc.unit_quaternion().coeffs().y();
-            transf_msg.transform.orientation.z = Tmc.unit_quaternion().coeffs().z();
+            transf_msg.transform.translation().x() = Tmap_odom.translation().x();
+            transf_msg.transform.translation().y() = Tmap_odom.translation().y();
+            transf_msg.transform.translation().z() = Tmap_odom.translation().z();
+            transf_msg.transform.rotation().w() = Tmap_odom.rotation().w();
+            transf_msg.transform.rotation().x() = Tmap_odom.rotation().x();
+            transf_msg.transform.rotation().y() = Tmap_odom.rotation().y();
+            transf_msg.transform.rotation().z() = Tmap_odom.rotation().z();
 
             transf_msg.header.stamp = this->get_clock()->now();
             transf_msg.header.frame_id = "map";
