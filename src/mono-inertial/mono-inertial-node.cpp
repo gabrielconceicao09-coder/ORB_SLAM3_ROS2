@@ -31,7 +31,7 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         std::bind(&MonoInertialNode::timer_callback, this) // o timer_ é chamado pelo node::spin() e ta bindado com o método timer_callback
     )*/
 
-    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
+    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track(), this);
 
     std::cout << "slam changed" << std::endl;
 }
@@ -140,12 +140,12 @@ void MonoInertialNode::SyncWithImu_Track()
         TfMsg transf_msg;
         try {
             TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
-            tf2::Transform Tmap_odom = Tmc_tf * odom_to_base_msg.Transform.inverse(); //Calculando transformação map => odom pedida pelo nav2
-            transf_msg.Transform = Tmap_odom;
+            tf2::Transform Tmap_odom = Tmc_tf * odom_to_base_msg.transform.inverse(); //Calculando transformação map => odom pedida pelo nav2
+            transf_msg.transform = Tmap_odom;
             transf_msg.header.stamp = this->get_clock()->now();
-            transf_msg.frame_id = "map";
+            transf_msg.header.frame_id = "map";
             transf_msg.child_frame_id = "odom";
-            tf_broadcaster_->sendTransform(transf_msg) //Publica transformação pelo tf2
+            tf_broadcaster_->sendTransform(transf_msg); //Publica transformação pelo tf2
         } catch (const tf2::TransformException & ex) {
             RCLCPP_INFO( this->get_logger(), "Could not find odom to base_link transform");
             return;
@@ -190,11 +190,11 @@ void MonoInertialNode::timer_callback()
     Sophus::SE3f::SharedPtr Tf_;
     TfMsg msg;
 
-    bufTfMutex.lock(); //copiei a estratégia buffer e lock com mutex
+    bufTfMutex_.lock(); //copiei a estratégia buffer e lock com mutex
     Tf_ = tfBuf_.front();
     //msg = MakeTfMsg(Tf_);
     tfBuf_.pop();
     bufTfMutex_.unlock();
 
-    tf_publisher->publish(msg);
+    tf_broadcaster->sendTransform(msg);
 }
