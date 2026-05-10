@@ -4,7 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/imu.hpp"
-#include "sensor_msgs/msg/pointcloud2.hpp"
+#include "sensor_msgs/msg/pointcloud2.h"
 #include "sensor_msgs/msg/pointcloud.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2_ros/transform_broadcaster.h"
