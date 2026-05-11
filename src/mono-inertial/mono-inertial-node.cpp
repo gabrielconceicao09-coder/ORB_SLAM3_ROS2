@@ -1,7 +1,7 @@
 
 #include "mono-inertial-node.hpp"
 
-#include<opencv2/core/core.hpp>
+#include <opencv2/core/core.hpp>
 
 using std::placeholders::_1;
 
@@ -19,10 +19,9 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         "imu",
         1000,
         std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
-    );
 
     pointcloud_publisher = this->create_publisher<PclMsg>(
-        "PCLTOPIC"
+        "PCLTOPIC",
         10
     );
 
@@ -117,31 +116,28 @@ void MonoInertialNode::SyncWithImu_Track()
         bufImuMutex_.unlock();
         
         Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
-        
-        Sophus::SE3f Tmc = Tcm.inverse();
-        tf2::Transform Tmc_tf;
-        Tmc_tf.translation.x = Tmc.translation.x; //Montando transformada tf2 a partir do SE3f Tmc
-        Tmc_tf.translation.y = Tmc.translation.y;
-        Tmc_tf.translation.z = Tmc.translation.z;
-        Tmc_tf.rotation.w = Tmc.unit_quaternion().coeffs().w();
-        Tmc_tf.rotation.x = Tmc.unit_quaternion().coeffs().x();
-        Tmc_tf.rotation.y = Tmc.unit_quaternion().coeffs().y();
-        Tmc_tf.rotation.z = Tmc.unit_quaternion().coeffs().z();
+        Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera (está em base_link pela calibração do slam)
         
         TfMsg transf_msg;
         try {
             TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
-            tf2::Transform Todom_base = odom_to_base_msg.transform;
-            tf2::Transform Tmap_odom = Tmc_tf * Todom_base.inverse(); //Calculando transformação map => odom pedida pelo nav2
+            auto translation = odom_to_base_msg.transform.translation;
+            auto rotation = odom_to_base_msg.transform.rotation;
+            Eigen::Vector3f trans(translation.x, translation.y, translation.z);
+            Eigen::Quaternionf rot(rotation.w, rotation.x, rotation.y, rotation.z);
+            Sophus::SE3f Tob(rot, trans);
+            Sophus::SE3f Tbo = Tob.inverse();
+            Sophus::SE3f Tmo = Tmc * Tbo //Transformação mapa => odometria, que o nav2 requisita
 
-            transf_msg.transform.translation.x = Tmap_odom.translation.x;
-            transf_msg.transform.translation.y = Tmap_odom.translation.y;
-            transf_msg.transform.translation.z = Tmap_odom.translation.z;
-            transf_msg.transform.rotation.w = Tmap_odom.rotation.w;
-            transf_msg.transform.rotation.x = Tmap_odom.rotation.x;
-            transf_msg.transform.rotation.y = Tmap_odom.rotation.y;
-            transf_msg.transform.rotation.z = Tmap_odom.rotation.z;
-
+            Eigen::Quaternionf Tmo_q(Tmo.rotationMatrix());
+            transf_msg.transform.translation.x = Tmo.translation().x();
+            transf_msg.transform.translation.x = Tmo.translation().y();
+            transf_msg.transform.translation.x = Tmo.translation().z();
+            transf_msg.transform.rotatio.w = Tmo_q.w();
+            transf_msg.transform.rotation.x = Tmo_q.x();
+            transf_msg.transform.rotation.y = Tmo_q.y();
+            transf_msg.transform.rotation.z = Tmo_q.z();
+            
             transf_msg.header.stamp = this->get_clock()->now();
             transf_msg.header.frame_id = "map";
             transf_msg.child_frame_id = "odom";
