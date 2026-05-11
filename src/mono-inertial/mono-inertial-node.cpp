@@ -127,17 +127,17 @@ void MonoInertialNode::SyncWithImu_Track()
             Eigen::Quaternionf rot(rotation.w, rotation.x, rotation.y, rotation.z);
             Sophus::SE3f Tob(rot, trans);
             Sophus::SE3f Tbo = Tob.inverse();
-            Sophus::SE3f Tmo = Tmc * Tbo //Transformação mapa => odometria, que o nav2 requisita
+            Sophus::SE3f Tmo = Tmc * Tbo; //Transformação mapa => odometria, que o nav2 requisita
 
             Eigen::Quaternionf Tmo_q(Tmo.rotationMatrix());
             transf_msg.transform.translation.x = Tmo.translation().x();
             transf_msg.transform.translation.x = Tmo.translation().y();
             transf_msg.transform.translation.x = Tmo.translation().z();
-            transf_msg.transform.rotatio.w = Tmo_q.w();
+            transf_msg.transform.rotation.w = Tmo_q.w();
             transf_msg.transform.rotation.x = Tmo_q.x();
             transf_msg.transform.rotation.y = Tmo_q.y();
             transf_msg.transform.rotation.z = Tmo_q.z();
-            
+
             transf_msg.header.stamp = this->get_clock()->now();
             transf_msg.header.frame_id = "map";
             transf_msg.child_frame_id = "odom";
@@ -146,9 +146,6 @@ void MonoInertialNode::SyncWithImu_Track()
             RCLCPP_INFO( this->get_logger(), "Could not find odom to base_link transform");
             return;
         }
-        bufTfMutex_.lock(); //Coloca uma tf coletada no buffer
-        tfBuf_.push(Tcm);
-        bufTfMutex_.unlock();
         //TODO: Talvez precise colocar um sleep igual o q tem em stereo-inertial.
 
     }

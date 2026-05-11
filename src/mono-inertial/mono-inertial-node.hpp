@@ -42,7 +42,7 @@ private:
     void GrabImage(const ImageMsg::SharedPtr msg);
     void GrabImu(const ImuMsg::SharedPtr msg);
     cv::Mat GetImage(const ImageMsg::SharedPtr msg);
-    void SyncWithImu_Track(); //retorna o resultado do tracking do orbslam3, após sincronizar a imagem e o imu
+    void SyncWithImu_Track(); //publica resultado do tracking do orbslam3, após sincronizar a imagem e o imu
 
 
     ORB_SLAM3::System* m_SLAM;
