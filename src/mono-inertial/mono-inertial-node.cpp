@@ -25,7 +25,7 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         10
     );
 
-    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track(), this0);
+    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track, this);
 
     std::cout << "slam changed" << std::endl;
 }
