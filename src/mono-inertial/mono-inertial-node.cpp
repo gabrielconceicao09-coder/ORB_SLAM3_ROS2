@@ -11,18 +11,18 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
     m_SLAM = pSLAM;
     // std::cout << "slam changed" << std::endl;
     m_image_subscriber = this->create_subscription<ImageMsg>(
-        "camera",
-        10,
+        "image_raw",
+        rclcpp::SensorDataQos(),
         std::bind(&MonoInertialNode::GrabImage, this, std::placeholders::_1));
     
     imu_subscriber = this->create_subscription<ImuMsg>(
         "imu",
-        1000,
+        rclcpp::SensorDataQos(),
         std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
 
     pointcloud_publisher = this->create_publisher<PclMsg>(
         "PCLTOPIC",
-        10
+        rclcpp::SensorDataQos()
     );
 
     syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track, this);
@@ -49,6 +49,7 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
     bufImuMutex_.lock();
     imuBuf_.push(msg);
     bufImuMutex_.unlock();
+    RCLCPP_INFO(this->get_logger(), "Mensagem IMU recebida");
 }
 
 void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
@@ -56,6 +57,7 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
     bufImgMutex_.lock();
     imgBuf_.push(msg);
     bufImgMutex_.lock();
+    RCLCPP_INFO(this->get_logger(), "Mensagem camera recebida");
 }
 
 cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
