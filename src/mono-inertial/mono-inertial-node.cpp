@@ -12,17 +12,17 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
     // std::cout << "slam changed" << std::endl;
     m_image_subscriber = this->create_subscription<ImageMsg>(
         "image_raw",
-        rclcpp::SensorDataQos(),
+        rclcpp::SensorDataQoS(),
         std::bind(&MonoInertialNode::GrabImage, this, std::placeholders::_1));
     
     imu_subscriber = this->create_subscription<ImuMsg>(
         "imu",
-        rclcpp::SensorDataQos(),
+        rclcpp::SensorDataQoS(),
         std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
 
     pointcloud_publisher = this->create_publisher<PclMsg>(
         "PCLTOPIC",
-        rclcpp::SensorDataQos()
+        rclcpp::SensorDataQoS()
     );
 
     syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu_Track, this);
