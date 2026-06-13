@@ -58,7 +58,7 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
     RCLCPP_INFO(this->get_logger(), "GrabImage chamada");
     bufImgMutex_.lock();
     imgBuf_.push(msg);
-    bufImgMutex_.lock();
+    bufImgMutex_.unlock();
     RCLCPP_INFO(this->get_logger(), "Mensagem camera recebida");
 }
 
@@ -99,7 +99,7 @@ void MonoInertialNode::SyncWithImu_Track()
         bufImgMutex_.lock();
         if (imgBuf_.empty()){
             bufImgMutex_.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;
         }
         bufImgMutex_.unlock();
