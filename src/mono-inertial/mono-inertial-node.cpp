@@ -120,16 +120,11 @@ void MonoInertialNode::SyncWithImu_Track()
         {
             bufImuMutex_.unlock();
             // Devolve a imagem para o topo do buffer para não perdê-la
-            bufImgMutex_.lock();
-            // Se quiser simplificar, pode só dar um "continue" e descartar essa imagem, 
-            // mas reinserir garante consistência se a IMU der um pequeno lag
-            // imgBuf_.push_front(...) 
-            bufImgMutex_.unlock();
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue; 
         }
 
-
+        bufImuMutex_.lock();
         if (!imuBuf_.empty())
         {
             //Load imu measurements from buffer
