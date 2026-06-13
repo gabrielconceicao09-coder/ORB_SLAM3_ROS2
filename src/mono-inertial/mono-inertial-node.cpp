@@ -206,6 +206,10 @@ void MonoInertialNode::SyncWithImu_Track()
     while(rclcpp::ok())
     {
         RCLCPP_INFO(this->get_logger(), "Iteração de SyncWithImu_Track chamada");
+        if (!imgBuf_.empty() && !imuBuf_.empty()) {
+                RCLCPP_INFO(this->get_logger(), "CONFERÊNCIA -> Tempo Imagem: %f | Última IMU: %f", Utility::StampToSec(imgBuf_.front()->header.stamp), 
+                Utility::StampToSec(imuBuf_.back()->header.stamp));
+        }
         cv::Mat Img;
         double tImg = 0.0;
         ImageMsg::SharedPtr img_msg_ponteiro = nullptr;
@@ -280,7 +284,7 @@ void MonoInertialNode::SyncWithImu_Track()
             
             // PROTEÇÃO: O ORB-SLAM3 precisa de pelo menos 2 pontos para calcular o delta de tempo (t_atual - t_anterior)
             // Para o primeiro frame, idealmente queremos uma janela robusta.
-            if(vImuMeas.size() < 3) {
+            if(vImuMeas.size() < 1) {
                 RCLCPP_WARN(this->get_logger(), "Vetor de IMU muito pequeno (%lu pontos). Aguardando mais dados...", vImuMeas.size());
                 continue;
             }
