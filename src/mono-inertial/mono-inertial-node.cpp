@@ -83,9 +83,10 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
     }
     else
     {
-        std::cerr << "Error image type" << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Error image type");
         return m_cvImPtr->image.clone();
     }
+    RCLCPP_INFO(this->get_logger(), "GetImage rodou");
 }
 
 void MonoInertialNode::SyncWithImu_Track()
@@ -98,7 +99,7 @@ void MonoInertialNode::SyncWithImu_Track()
         bufImgMutex_.lock();
         if (imgBuf_.empty()){
             bufImgMutex_.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
         }
         bufImgMutex_.unlock();
