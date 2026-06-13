@@ -48,6 +48,13 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
     RCLCPP_INFO(this->get_logger(), "GrabImu chamada");
     //Não entendi muito bem, mas de alguma forma esse Mutex impede que outras threads alterem imuBuff_ ao mesmo tempo
     bufImuMutex_.lock();
+    if (std::isnan(msg->linear_acceleration.x) || std::isnan(msg->linear_acceleration.y) || std::isnan(msg->linear_acceleration.z) ||
+        std::isnan(msg->angular_velocity.x)    || std::isnan(msg->angular_velocity.y)    || std::isnan(msg->angular_velocity.z))
+    {
+        bufImuMutex_.unlock();
+        RCLCPP_WARN(this->get_logger(), "IMU descartada: Contém valores NaN!");
+        return;
+    }
     imuBuf_.push(msg);
     bufImuMutex_.unlock();
     RCLCPP_INFO(this->get_logger(), "Mensagem IMU recebida");
@@ -269,8 +276,15 @@ void MonoInertialNode::SyncWithImu_Track()
             }
         }
 
-        // 4. Alimenta o ORB-SLAM3
         if(!vImuMeas.empty() && !Img.empty()) {
+            
+            // PROTEÇÃO: O ORB-SLAM3 precisa de pelo menos 2 pontos para calcular o delta de tempo (t_atual - t_anterior)
+            // Para o primeiro frame, idealmente queremos uma janela robusta.
+            if(vImuMeas.size() < 3) {
+                RCLCPP_WARN(this->get_logger(), "Vetor de IMU muito pequeno (%lu pontos). Aguardando mais dados...", vImuMeas.size());
+                continue;
+            }
+
             RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU. Enviando %lu pontos.", vImuMeas.size());
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
             RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado com sucesso!");
