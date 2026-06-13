@@ -119,12 +119,11 @@ void MonoInertialNode::SyncWithImu_Track()
         if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
         {
             bufImuMutex_.unlock();
-            // Devolve a imagem para o topo do buffer para não perdê-la
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue; 
+            bufImuMutex_.lock();
         }
 
-        bufImuMutex_.lock();
         if (!imuBuf_.empty())
         {
             //Load imu measurements from buffer
