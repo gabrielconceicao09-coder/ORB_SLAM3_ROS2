@@ -45,6 +45,7 @@ MonoInertialNode::~MonoInertialNode()
 
 void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 {
+    RCLCPP_INFO(this->get_logger(), "GrabImu chamada");
     //Não entendi muito bem, mas de alguma forma esse Mutex impede que outras threads alterem imuBuff_ ao mesmo tempo
     bufImuMutex_.lock();
     imuBuf_.push(msg);
@@ -54,6 +55,7 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 
 void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
 {
+    RCLCPP_INFO(this->get_logger(), "GrabImage chamada");
     bufImgMutex_.lock();
     imgBuf_.push(msg);
     bufImgMutex_.lock();
@@ -62,7 +64,7 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
 
 cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 {
-
+    RCLCPP_INFO(this->get_logger(), "GetImage chamada");
     // Copy the ros image message to cv::Mat.
     cv_bridge::CvImageConstPtr m_cvImPtr;
 
@@ -88,7 +90,7 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 
 void MonoInertialNode::SyncWithImu_Track()
 {   
-    
+    RCLCPP_INFO(this->get_logger(), "SyncWithImu_Track chamada");
     while(1) //Sempre rodando, i guess
     {
         cv::Mat Img;
@@ -116,8 +118,9 @@ void MonoInertialNode::SyncWithImu_Track()
             }
         }
         bufImuMutex_.unlock();
-        
+        RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU");
         Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
+        RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado");
         /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera (está em base_link pela calibração do slam)
         
         TfMsg transf_msg;
