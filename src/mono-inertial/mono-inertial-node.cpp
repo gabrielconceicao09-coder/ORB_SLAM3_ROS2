@@ -138,6 +138,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
                 cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+                RCLCPP_INFO(this->get_logger(), "DEBUG SLAM -> Acc: [%f, %f, %f] | Gyr: [%f, %f, %f]", vImuMeas.back().a.x, vImuMeas.back().a.y, vImuMeas.back().a.z, vImuMeas.back().w.x, vImuMeas.back().w.y, vImuMeas.back().w.z);
                 imuBuf_.pop();
             }
         }
