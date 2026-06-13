@@ -118,7 +118,7 @@ void MonoInertialNode::SyncWithImu_Track()
         bufImuMutex_.unlock();
         
         Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
-        Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera (está em base_link pela calibração do slam)
+        /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera (está em base_link pela calibração do slam)
         
         TfMsg transf_msg;
         try {
@@ -149,6 +149,6 @@ void MonoInertialNode::SyncWithImu_Track()
             return;
         }
         //TODO: Talvez precise colocar um sleep igual o q tem em stereo-inertial.
-
+        */
     }
 }
