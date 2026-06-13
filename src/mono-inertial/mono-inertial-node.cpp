@@ -91,7 +91,7 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 void MonoInertialNode::SyncWithImu_Track()
 {   
     RCLCPP_INFO(this->get_logger(), "SyncWithImu_Track chamada");
-    while(1) //Sempre rodando, i guess
+    while(rclcpp::ok()) //Sempre rodando, i guess
     {
         cv::Mat Img;
         
@@ -103,15 +103,31 @@ void MonoInertialNode::SyncWithImu_Track()
         }
         bufImgMutex_.unlock();
 
-        double tImg = Utility::StampToSec(imgBuf_.front()->header.stamp);
-
         bufImgMutex_.lock();
+        double tImg = Utility::StampToSec(imgBuf_.front()->header.stamp);
         Img = GetImage(imgBuf_.front());
         imgBuf_.pop();
         bufImgMutex_.unlock();
 
         vector<ORB_SLAM3::IMU::Point> vImuMeas;
         bufImuMutex_.lock();
+
+        // CRÍTICO: Se o buffer da IMU estiver vazio OU a última mensagem do buffer 
+        // ainda for mais antiga que a imagem, precisamos esperar mais dados da IMU chegarem.
+        if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
+        {
+            bufImuMutex_.unlock();
+            // Devolve a imagem para o topo do buffer para não perdê-la
+            bufImgMutex_.lock();
+            // Se quiser simplificar, pode só dar um "continue" e descartar essa imagem, 
+            // mas reinserir garante consistência se a IMU der um pequeno lag
+            // imgBuf_.push_front(...) 
+            bufImgMutex_.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue; 
+        }
+
+
         if (!imuBuf_.empty())
         {
             //Load imu measurements from buffer
@@ -125,10 +141,25 @@ void MonoInertialNode::SyncWithImu_Track()
                 imuBuf_.pop();
             }
         }
+
+        // Adiciona a PRIMEIRA mensagem que é MAIOR que tImg (envelopamento necessário para o ORB-SLAM3)
+        // Mas NÃO damos pop() nela, pois ela serve de limite inicial para o próximo frame de imagem!
+        if(!imuBuf_.empty())
+        {
+            double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
+            cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
+            cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
+            vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+        }
+
         bufImuMutex_.unlock();
+
+        if(!vImuMeas.empty()) {
         RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU");
         Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
         RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado");
+        }
+        
         /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera (está em base_link pela calibração do slam)
         
         TfMsg transf_msg;
