@@ -155,11 +155,11 @@ void MonoInertialNode::SyncWithImu_Track()
         bufImuMutex_.unlock();
 
         if(!vImuMeas.empty()) {
-        RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU");
-        Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
-        RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado");
+            RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU");
+            Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas); //Tracking do orbslam3
+            RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado");
         }
-        
+
         /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera (está em base_link pela calibração do slam)
         
         TfMsg transf_msg;
