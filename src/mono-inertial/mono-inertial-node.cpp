@@ -89,7 +89,7 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
     RCLCPP_INFO(this->get_logger(), "GetImage rodou");
 }
 
-void MonoInertialNode::SyncWithImu_Track()
+/*void MonoInertialNode::SyncWithImu_Track()
 {   
     
     while(rclcpp::ok()) //Sempre rodando, i guess
@@ -120,8 +120,8 @@ void MonoInertialNode::SyncWithImu_Track()
         {
             bufImuMutex_.unlock();
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            continue; 
             bufImuMutex_.lock();
+            continue; 
         }
 
         if (!imuBuf_.empty())
@@ -188,6 +188,92 @@ void MonoInertialNode::SyncWithImu_Track()
             return;
         }
         //TODO: Talvez precise colocar um sleep igual o q tem em stereo-inertial.
-        */
+        /
+    }
+}*/
+
+//Solução do Gemini:
+
+void MonoInertialNode::SyncWithImu_Track()
+{   
+    while(rclcpp::ok())
+    {
+        RCLCPP_INFO(this->get_logger(), "Iteração de SyncWithImu_Track chamada");
+        cv::Mat Img;
+        double tImg = 0.0;
+        ImageMsg::SharedPtr img_msg_ponteiro = nullptr;
+        
+        // 1. ESCOPO ISOLADO: Apenas verifica se há imagens e espia o timestamp
+        {
+            std::unique_lock<std::mutex> lockImg(bufImgMutex_);
+            if (imgBuf_.empty()){
+                lockImg.unlock(); // Destrava antes de dormir
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            // Apenas pegamos o ponteiro e o tempo, NÃO damos pop() ainda!
+            img_msg_ponteiro = imgBuf_.front();
+            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp);
+        } // O lockImg é destruído e liberado aqui automaticamente
+
+        vector<ORB_SLAM3::IMU::Point> vImuMeas;
+        
+        // 2. ESCOPO ISOLADO: Sincronização temporal da IMU
+        {
+            std::unique_lock<std::mutex> lockImu(bufImuMutex_);
+
+            // Se a IMU estiver vazia OU o último dado da IMU ainda for mais antigo que a imagem,
+            // nós não jogamos a imagem fora! Esperamos 2ms para a serial entregar a IMU no futuro.
+            if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) <= tImg)
+            {
+                lockImu.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue; // Volta ao topo e tenta ler A MESMA imagem de novo
+            }
+
+            // Se passou do IF acima, temos dados suficientes de IMU para cobrir a imagem.
+            // Vamos descarregar o buffer da IMU até o tempo da imagem.
+            vImuMeas.clear();
+            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
+            {
+                double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
+                cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
+                
+                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+                
+                // Print de debug para validar unidades e sinais no terminal
+                RCLCPP_INFO(this->get_logger(), "DEBUG SLAM -> Acc: [%f, %f, %f] | Gyr: [%f, %f, %f]", 
+                            acc.x, acc.y, acc.z, gyr.x, gyr.y, gyr.z);
+                            
+                imuBuf_.pop();
+            }
+
+            // Adiciona a primeira mensagem do "futuro" sem dar pop (exigência do ORB-SLAM3 para envelopar a imagem)
+            if(!imuBuf_.empty())
+            {
+                double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
+                cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
+                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+            }
+        } // O lockImu é liberado aqui automaticamente
+
+        // 3. Agora que a IMU está garantida e salva no vetor local,
+        // retiramos (pop) a imagem do buffer com segurança fora de qualquer outra trava perigosa
+        {
+            std::unique_lock<std::mutex> lockImg(bufImgMutex_);
+            if(!imgBuf_.empty() && imgBuf_.front() == img_msg_ponteiro) {
+                Img = GetImage(imgBuf_.front());
+                imgBuf_.pop();
+            }
+        }
+
+        // 4. Alimenta o ORB-SLAM3
+        if(!vImuMeas.empty() && !Img.empty()) {
+            RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU. Enviando %lu pontos.", vImuMeas.size());
+            Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
+            RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado com sucesso!");
+        }
     }
 }
