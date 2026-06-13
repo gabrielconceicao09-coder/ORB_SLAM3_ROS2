@@ -94,6 +94,14 @@ void MonoInertialNode::SyncWithImu_Track()
     while(1) //Sempre rodando, i guess
     {
         cv::Mat Img;
+        
+        bufImgMutex_.lock();
+        if (imgBuf_.empty()){
+            bufImgMutex_.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+        bufImgMutex_.unlock();
 
         double tImg = Utility::StampToSec(imgBuf_.front()->header.stamp);
 
