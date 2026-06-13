@@ -91,9 +91,10 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 
 void MonoInertialNode::SyncWithImu_Track()
 {   
-    RCLCPP_INFO(this->get_logger(), "SyncWithImu_Track chamada");
+    
     while(rclcpp::ok()) //Sempre rodando, i guess
     {
+        RCLCPP_INFO(this->get_logger(), "Iteração de SyncWithImu_Track chamada");
         cv::Mat Img;
         
         bufImgMutex_.lock();
