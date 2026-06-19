@@ -259,8 +259,8 @@ void MonoInertialNode::SyncWithImu_Track()
                     continue;
                 }
             } else {
-                RCLCPP_INFO(this->get_logger(), "Algo não está OK com o tracking: %d", m_SLAM->GetTrackingState());
-            }*/  
+                RCLCPP_INFO(this->get_logger(), "Algo não está OK com o tracking: %d", m_SLAM->GetTrackingState());*/
+            }  
     }
 }
 
