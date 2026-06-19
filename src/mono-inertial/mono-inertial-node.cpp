@@ -144,7 +144,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // Se passou do IF acima, temos dados suficientes de IMU para cobrir a imagem.
             // Vamos descarregar o buffer da IMU até o tempo da imagem.
             vImuMeas.clear();
-            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg+0.01)
+            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
             {
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
                 cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
