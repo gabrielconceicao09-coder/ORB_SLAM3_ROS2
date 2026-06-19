@@ -29,7 +29,7 @@ int main(int argc, char **argv)
 
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(node);
-    executor.spin(node);
+    executor.spin();
     rclcpp::shutdown();
 
     return 0;
