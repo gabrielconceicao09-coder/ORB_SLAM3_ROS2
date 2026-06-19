@@ -192,12 +192,42 @@ void MonoInertialNode::SyncWithImu_Track()
             try{
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
             RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado com sucesso!");
+
+            Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
+            TfMsg transf_msg;
+            try {
+                TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
+                auto translation = odom_to_base_msg.transform.translation;
+                auto rotation = odom_to_base_msg.transform.rotation;
+                Eigen::Vector3f trans(translation.x, translation.y, translation.z);
+                Eigen::Quaternionf rot(rotation.w, rotation.x, rotation.y, rotation.z);
+                Sophus::SE3f Tob(rot, trans);
+                Sophus::SE3f Tbo = Tob.inverse();
+                Sophus::SE3f Tmo = Tmc * Tbo; //Transformação mapa => odometria, que o nav2 requisita (sem passar camera pra base_link)
+
+                Eigen::Quaternionf Tmo_q(Tmo.rotationMatrix());
+                transf_msg.transform.translation.x = Tmo.translation().x();
+                transf_msg.transform.translation.y = Tmo.translation().y();
+                transf_msg.transform.translation.z = Tmo.translation().z();
+                transf_msg.transform.rotation.w = Tmo_q.w();
+                transf_msg.transform.rotation.x = Tmo_q.x();
+                transf_msg.transform.rotation.y = Tmo_q.y();
+                transf_msg.transform.rotation.z = Tmo_q.z();
+
+                transf_msg.header.stamp = this->get_clock()->now();
+                transf_msg.header.frame_id = "map";
+                transf_msg.child_frame_id = "odom";
+                tf_broadcaster_->sendTransform(transf_msg); //Publica transformação pelo tf2
+            } catch (const tf2::TransformException & ex) {
+                RCLCPP_INFO( this->get_logger(), "Could not find odom to base_link transform: %s", ex.what());
+                continue;
+            }
             } catch (...) {
                 RCLCPP_INFO(this->get_logger(), "Algum problema com o tracking");
                 continue;
             }
             
-            if (m_SLAM->GetTrackingState() == ORBSLAM::Tracking::OK){
+            /*if (m_SLAM->GetTrackingState() == ORBSLAM::Tracking::OK){
 
                 Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
                 TfMsg transf_msg;
@@ -230,7 +260,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 }
             } else {
                 RCLCPP_INFO(this->get_logger(), "Algo não está OK com o tracking: %d", m_SLAM->GetTrackingState());
-            }  
+            }*/  
     }
 }
 
