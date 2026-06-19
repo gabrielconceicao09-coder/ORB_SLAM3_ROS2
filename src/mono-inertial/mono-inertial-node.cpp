@@ -144,7 +144,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // Se passou do IF acima, temos dados suficientes de IMU para cobrir a imagem.
             // Vamos descarregar o buffer da IMU até o tempo da imagem.
             vImuMeas.clear();
-            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
+            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg+0.01)
             {
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
                 cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
@@ -193,7 +193,7 @@ void MonoInertialNode::SyncWithImu_Track()
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
             RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado com sucesso!");
 
-            Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
+            /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
             TfMsg transf_msg;
             try {
                 TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
@@ -221,7 +221,7 @@ void MonoInertialNode::SyncWithImu_Track()
             } catch (const tf2::TransformException & ex) {
                 RCLCPP_INFO( this->get_logger(), "Could not find odom to base_link transform: %s", ex.what());
                 continue;
-            }
+            }*/
             } catch (...) {
                 RCLCPP_INFO(this->get_logger(), "Algum problema com o tracking");
                 continue;
