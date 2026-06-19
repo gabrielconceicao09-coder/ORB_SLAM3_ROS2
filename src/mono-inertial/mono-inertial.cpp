@@ -27,7 +27,9 @@ int main(int argc, char **argv)
     auto node = std::make_shared<MonoInertialNode>(&SLAM);
     std::cout << "============================ " << std::endl;\
 
-    rclcpp::spin(node);
+    rclcpp::executors::MultiThreadedExecutor executor;
+    executor.add_node(node);
+    executor.spin(node);
     rclcpp::shutdown();
 
     return 0;
