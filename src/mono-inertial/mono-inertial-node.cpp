@@ -1,6 +1,4 @@
-
 #include "mono-inertial-node.hpp"
-
 #include <opencv2/core/core.hpp>
 
 using std::placeholders::_1;
