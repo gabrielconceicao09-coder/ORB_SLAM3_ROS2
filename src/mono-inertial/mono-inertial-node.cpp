@@ -117,7 +117,8 @@ void MonoInertialNode::SyncWithImu_Track()
         {
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
             if (imgBuf_.empty()){
-                lockImg.unlock(); // Destrava antes de dormir
+                lockImg.unlock();
+                RCLCPP_INFO(this->get_logger(), "Buffer de imagens vazio, esperando 5 ms...");
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
             }
@@ -137,6 +138,7 @@ void MonoInertialNode::SyncWithImu_Track()
             if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) <= tImg)
             {
                 lockImu.unlock();
+                RCLCPP_INFO(this->get_logger(), "Medida IMU mais nova ainda é mais antiga que a imagem, esperando 2 ms...");
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue; // Volta ao topo e tenta ler A MESMA imagem de novo
             }
@@ -166,6 +168,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
                 cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+                RCLCPP_INFO(this->get_logger(), "Medida IMU mais nova que a imagem adicionada");
             }
         } // O lockImu é liberado aqui automaticamente
 
