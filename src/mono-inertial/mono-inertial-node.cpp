@@ -46,7 +46,7 @@ MonoInertialNode::~MonoInertialNode()
 void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 {
     //RCLCPP_INFO(this->get_logger(), "GrabImu chamada");
-    msg->header.stamp = this->get_clock()->now();
+    //msg->header.stamp = this->get_clock()->now();
     bufImuMutex_.lock();
     if (std::isnan(msg->linear_acceleration.x) || std::isnan(msg->linear_acceleration.y) || std::isnan(msg->linear_acceleration.z) ||
         std::isnan(msg->angular_velocity.x)    || std::isnan(msg->angular_velocity.y)    || std::isnan(msg->angular_velocity.z))
@@ -63,7 +63,7 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
 {
     //RCLCPP_INFO(this->get_logger(), "GrabImage chamada");
-    msg->header.stamp = this->get_clock()->now();
+    //msg->header.stamp = this->get_clock()->now();
     bufImgMutex_.lock();
     imgBuf_.push(msg);
     bufImgMutex_.unlock();
