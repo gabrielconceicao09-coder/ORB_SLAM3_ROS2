@@ -9,6 +9,7 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
     m_SLAM = pSLAM;
     // std::cout << "slam changed" << std::endl;
     image_sub_topic_ = this->declare_parameter<std::string>("image_sub_topic", "/image_raw");
+    imu_sub_topic_ = this->declare_parameter<std::string>("imu_sub_topic", "/imu");
 
     m_image_subscriber = this->create_subscription<ImageMsg>(
         image_sub_topic_,
@@ -16,7 +17,7 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
         std::bind(&MonoInertialNode::GrabImage, this, std::placeholders::_1));
     
     imu_subscriber = this->create_subscription<ImuMsg>(
-        "/imu",
+        imu_sub_topic_,
         rclcpp::SensorDataQoS(),
         std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
 
@@ -106,7 +107,7 @@ void MonoInertialNode::SyncWithImu_Track()
     {
         RCLCPP_INFO(this->get_logger(), "Iteração de SyncWithImu_Track chamada");
         if (!imgBuf_.empty() && !imuBuf_.empty()) {
-                RCLCPP_INFO(this->get_logger(), "CONFERÊNCIA -> Tempo Imagem: %f | Última IMU: %f", Utility::StampToSec(imgBuf_.front()->header.stamp), 
+                RCLCPP_INFO(this->get_logger(), "1) Buffers não estão vazios: Tempo Imagem: %f | Última IMU: %f", Utility::StampToSec(imgBuf_.front()->header.stamp), 
                 Utility::StampToSec(imuBuf_.back()->header.stamp));
         }
         cv::Mat Img;
@@ -118,7 +119,7 @@ void MonoInertialNode::SyncWithImu_Track()
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
             if (imgBuf_.empty()){
                 lockImg.unlock();
-                RCLCPP_INFO(this->get_logger(), "Buffer de imagens vazio, esperando 5 ms...");
+                RCLCPP_INFO(this->get_logger(), "2) Buffer de imagens vazio, esperando 5 ms...");
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
             }
@@ -138,8 +139,8 @@ void MonoInertialNode::SyncWithImu_Track()
             if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) <= tImg)
             {
                 lockImu.unlock();
-                RCLCPP_INFO(this->get_logger(), "Medida IMU mais nova ainda é mais antiga que a imagem, esperando 2 ms...");
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                RCLCPP_INFO(this->get_logger(), "3) Buff imu vazio ou medida IMU mais nova ainda é mais antiga que a imagem, esperando 5 ms...");
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue; // Volta ao topo e tenta ler A MESMA imagem de novo
             }
 
@@ -155,7 +156,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                 
                 // Print de debug para validar unidades e sinais no terminal
-                RCLCPP_INFO(this->get_logger(), "DEBUG SLAM -> Acc: [%f, %f, %f] | Gyr: [%f, %f, %f]", 
+                RCLCPP_INFO(this->get_logger(), "4) Mensagens imu parecem ser suficientes, preenchendo vetor vImuMeas: Acc: [%f, %f, %f] | Gyr: [%f, %f, %f]", 
                             acc.x, acc.y, acc.z, gyr.x, gyr.y, gyr.z);
                             
                 imuBuf_.pop();
@@ -168,7 +169,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
                 cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
-                RCLCPP_INFO(this->get_logger(), "Medida IMU mais nova que a imagem adicionada");
+                RCLCPP_INFO(this->get_logger(), "5) Medida IMU mais nova que a imagem adicionada");
             }
         } // O lockImu é liberado aqui automaticamente
 
@@ -187,14 +188,14 @@ void MonoInertialNode::SyncWithImu_Track()
             // PROTEÇÃO: O ORB-SLAM3 precisa de pelo menos 2 pontos para calcular o delta de tempo (t_atual - t_anterior)
             // Para o primeiro frame, idealmente queremos uma janela robusta.
             if(vImuMeas.size() < 1) {
-                RCLCPP_WARN(this->get_logger(), "Vetor de IMU muito pequeno (%lu pontos). Aguardando mais dados...", vImuMeas.size());
+                RCLCPP_WARN(this->get_logger(), "6) Vetor de IMU muito pequeno (%lu pontos). Aguardando mais dados...", vImuMeas.size());
                 continue;
             }
 
-            RCLCPP_INFO(this->get_logger(), "Passamos pela sincronização com IMU. Enviando %lu pontos.", vImuMeas.size());
+            RCLCPP_INFO(this->get_logger(), "7) Passamos pela sincronização com IMU. Enviando %lu pontos.", vImuMeas.size());
             try{
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
-            RCLCPP_INFO(this->get_logger(), "TrackMonocular chamado com sucesso!");
+            RCLCPP_INFO(this->get_logger(), "8) TrackMonocular chamado com sucesso!");
 
             /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
             TfMsg transf_msg;
