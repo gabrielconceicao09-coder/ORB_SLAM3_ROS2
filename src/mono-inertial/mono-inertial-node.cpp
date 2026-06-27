@@ -98,7 +98,131 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
         return m_cvImPtr->image.clone();
     }
 }
+//Solução 2 do Gemini:
 
+void MonoInertialNode::SyncWithImu_Track()
+{   
+    // Guardamos o timestamp da última imagem processada para garantir continuidade perfeita
+    double tLastImg = -1.0;
+
+    while(rclcpp::ok())
+    {
+        cv::Mat Img;
+        double tImg = 0.0;
+        ImageMsg::SharedPtr img_msg_ponteiro = nullptr;
+        
+        // 1. ESCOPO: Verifica e recupera o frame da imagem (apenas espia)
+        {
+            std::unique_lock<std::mutex> lockImg(bufImgMutex_);
+            if (imgBuf_.empty()){
+                lockImg.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue;
+            }
+            img_msg_ponteiro = imgBuf_.front();
+            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp);
+        }
+
+        vector<ORB_SLAM3::IMU::Point> vImuMeas;
+        
+        // 2. ESCOPO: Sincronização temporal da IMU com garantia de continuidade
+        {
+            std::unique_lock<std::mutex> lockImu(bufImuMutex_);
+
+            // Condição essencial: Precisamos ter dados de IMU que ultrapassem o tempo da imagem atual
+            if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
+            {
+                lockImu.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue; 
+            }
+
+            // Se for o primeiro frame absoluto, precisamos garantir que temos dados de IMU ANTES da imagem
+            if (tLastImg < 0.0) {
+                if (Utility::StampToSec(imuBuf_.front()->header.stamp) >= tImg) {
+                    // IMU começou depois da imagem? Remove essa imagem antiga para não quebrar o SLAM
+                    lockImu.unlock();
+                    std::unique_lock<std::mutex> lockImg(bufImgMutex_);
+                    if(!imgBuf_.empty()) imgBuf_.pop();
+                    RCLCPP_WARN(this->get_logger(), "Descartando frame de imagem inicial sem histórico de IMU anterior.");
+                    continue;
+                }
+            }
+
+            vImuMeas.clear();
+
+            // Descarrega os pontos da IMU. 
+            // CRUCIAL: Deixamos a ÚLTIMA mensagem que passa ou iguala tImg no buffer (não damos pop nela)
+            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
+            {
+                double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
+                cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
+                
+                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+                
+                // Só damos pop se NÃO for a última mensagem limite do frame atual
+                // Isso garante que ela estará disponível para iniciar o próximo frame!
+                if (imuBuf_.size() > 1 && Utility::StampToSec(std::next(imuBuf_.begin())->header.stamp) <= tImg) {
+                    imuBuf_.pop();
+                } else {
+                    break; // Mantém o elemento na frente do buffer para a próxima iteração
+                }
+            }
+
+            // Adiciona um ponto do "futuro imediato" para envelopar o frame (exigência matemática do ORB-SLAM3)
+            if(imuBuf_.size() > 1)
+            {
+                auto itFuturo = std::next(imuBuf_.begin());
+                double t = Utility::StampToSec((*itFuturo)->header.stamp);
+                cv::Point3f acc((*itFuturo)->linear_acceleration.x, (*itFuturo)->linear_acceleration.y, (*itFuturo)->linear_acceleration.z);
+                cv::Point3f gyr((*itFuturo)->angular_velocity.x, (*itFuturo)->angular_velocity.y, (*itFuturo)->angular_velocity.z);
+                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+            }
+        } 
+
+        // 3. Extrai e remove a imagem do buffer de forma segura
+        {
+            std::unique_lock<std::mutex> lockImg(bufImgMutex_);
+            if(!imgBuf_.empty() && imgBuf_.front() == img_msg_ponteiro) {
+                Img = GetImage(imgBuf_.front());
+                imgBuf_.pop();
+            }
+        }
+
+        // 4. Executa o Tracking se os pacotes estiverem íntegros
+        if(!vImuMeas.empty() && !Img.empty()) {
+            
+            // Segurança para evitar buffers inválidos na inicialização
+            if(vImuMeas.size() < 2) {
+                continue;
+            }
+
+            try {
+                RCLCPP_INFO(this->get_logger(), "Enviando para o SLAM: %lu pontos de IMU. Delta tJanela: %f s", 
+                            vImuMeas.size(), (vImuMeas.back().t - vImuMeas.front().t));
+                
+                Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
+                
+                tLastImg = tImg; // Atualiza o tempo histórico com sucesso
+                
+                int estado = m_SLAM->GetTrackingState();
+                if(estado == 2) {
+                    RCLCPP_INFO(this->get_logger(), "=== TRACKING OK (ESTADO 2) ===");
+                } else {
+                    RCLCPP_INFO(this->get_logger(), "Tracking State: %d", estado);
+                }
+
+            } catch (...) {
+                RCLCPP_ERROR(this->get_logger(), "Crash ou exceção capturada dentro do TrackMonocular!");
+                continue;
+            }
+        }  
+    }
+}
+
+
+/*
 //Solução do Gemini:
 
 void MonoInertialNode::SyncWithImu_Track()
@@ -119,8 +243,8 @@ void MonoInertialNode::SyncWithImu_Track()
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
             if (imgBuf_.empty()){
                 lockImg.unlock();
-                RCLCPP_INFO(this->get_logger(), "2) Buffer de imagens vazio, esperando 5 ms...");
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                RCLCPP_INFO(this->get_logger(), "2) Buffer de imagens vazio, dando continue...");
+                //std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
             }
             // Apenas pegamos o ponteiro e o tempo, NÃO damos pop() ainda!
@@ -128,6 +252,7 @@ void MonoInertialNode::SyncWithImu_Track()
             tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp);
         } // O lockImg é destruído e liberado aqui automaticamente
 
+        
         vector<ORB_SLAM3::IMU::Point> vImuMeas;
         
         // 2. ESCOPO ISOLADO: Sincronização temporal da IMU
@@ -135,12 +260,11 @@ void MonoInertialNode::SyncWithImu_Track()
             std::unique_lock<std::mutex> lockImu(bufImuMutex_);
 
             // Se a IMU estiver vazia OU o último dado da IMU ainda for mais antigo que a imagem,
-            // nós não jogamos a imagem fora! Esperamos 2ms para a serial entregar a IMU no futuro.
             if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) <= tImg)
             {
                 lockImu.unlock();
-                RCLCPP_INFO(this->get_logger(), "3) Buff imu vazio ou medida IMU mais nova ainda é mais antiga que a imagem, esperando 5 ms...");
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                RCLCPP_INFO(this->get_logger(), "3) Buff imu vazio ou medida IMU mais nova ainda é mais antiga que a imagem, dando continue...");
+                //std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue; // Volta ao topo e tenta ler A MESMA imagem de novo
             }
 
@@ -229,11 +353,11 @@ void MonoInertialNode::SyncWithImu_Track()
             } catch (const tf2::TransformException & ex) {
                 RCLCPP_INFO( this->get_logger(), "Could not find odom to base_link transform: %s", ex.what());
                 continue;
-            }*/
+            }*//*
             } catch (...) {
                 RCLCPP_INFO(this->get_logger(), "Algum problema com o tracking");
                 continue;
-            }
+            }*/
             
             /*if (m_SLAM->GetTrackingState() == ORBSLAM::Tracking::OK){
 
@@ -268,9 +392,9 @@ void MonoInertialNode::SyncWithImu_Track()
                 }
             } else {
                 RCLCPP_INFO(this->get_logger(), "Algo não está OK com o tracking: %d", m_SLAM->GetTrackingState());*/
-            }  
+       /*     }  
     }
-}
+}*/
 
 /*void MonoInertialNode::SyncWithImu_Track()
 {   
