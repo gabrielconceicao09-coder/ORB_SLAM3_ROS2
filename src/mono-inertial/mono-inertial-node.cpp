@@ -192,7 +192,11 @@ void MonoInertialNode::SyncWithImu_Track()
                 continue;
             }
 
+            double tUltimaImu = vImuMeas.back().t;
+            double tPrimeiraImu = vImuMeas.front().t;
+            double difTempos = tUltimaImu-tImg;
             RCLCPP_INFO(this->get_logger(), "7) Passamos pela sincronização com IMU. Enviando %lu pontos.", vImuMeas.size());
+            RCLCPP_INFO(this-get_logger(), "7.5) Tempos dos dados: tImagem: %d, tPrimeiraImu: %f, tÚltimaImu: %f, diferença de tempos: %f", tImg, tPrimeiraImu, tUltimaImu, difTempos);
             try{
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
             RCLCPP_INFO(this->get_logger(), "8) TrackMonocular chamado com sucesso!");
