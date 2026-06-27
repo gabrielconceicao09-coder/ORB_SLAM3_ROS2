@@ -8,8 +8,10 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM)
 {
     m_SLAM = pSLAM;
     // std::cout << "slam changed" << std::endl;
+    image_sub_topic_ = this->declare_parameter<std::string>("image_sub_topic", "/image_raw");
+
     m_image_subscriber = this->create_subscription<ImageMsg>(
-        "/image_raw",
+        image_sub_topic_,
         rclcpp::SensorDataQoS(),
         std::bind(&MonoInertialNode::GrabImage, this, std::placeholders::_1));
     

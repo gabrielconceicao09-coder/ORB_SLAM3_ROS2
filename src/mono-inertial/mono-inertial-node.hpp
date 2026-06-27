@@ -64,6 +64,7 @@ private:
 
     //Define subscribers:
     rclcpp::Subscription<ImageMsg>::SharedPtr m_image_subscriber;
+    std::string image_sub_topic_;
     rclcpp::Subscription<ImuMsg>::SharedPtr imu_subscriber;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
