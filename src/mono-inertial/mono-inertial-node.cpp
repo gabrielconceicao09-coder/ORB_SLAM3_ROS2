@@ -187,7 +187,7 @@ void MonoInertialNode::SyncWithImu_Track()
             
             // PROTEÇÃO: O ORB-SLAM3 precisa de pelo menos 2 pontos para calcular o delta de tempo (t_atual - t_anterior)
             // Para o primeiro frame, idealmente queremos uma janela robusta.
-            if(vImuMeas.size() < 1) {
+            if(vImuMeas.size() < 5) {
                 RCLCPP_WARN(this->get_logger(), "6) Vetor de IMU muito pequeno (%lu pontos). Aguardando mais dados...", vImuMeas.size());
                 continue;
             }
@@ -199,7 +199,7 @@ void MonoInertialNode::SyncWithImu_Track()
             RCLCPP_INFO(this->get_logger(), "7.5) Tempos dos dados: tImagem: %f, tPrimeiraImu: %f, tÚltimaImu: %f, diferença de tempos: %f", tImg, tPrimeiraImu, tUltimaImu, difTempos);
             try{
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
-            RCLCPP_INFO(this->get_logger(), "8) TrackMonocular chamado com sucesso!");
+            RCLCPP_INFO(this->get_logger(), "8) TrackMonocular chamado com sucesso. Estado do tracking: %d", m_SLAM->GetTrackingState());
 
             /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
             TfMsg transf_msg;
