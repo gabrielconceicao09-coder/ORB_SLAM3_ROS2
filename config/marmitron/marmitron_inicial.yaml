@@ -25,6 +25,9 @@ Camera.fps: 15.0
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 1
 
+# Image scale, it changes the image size to be processed (<1.0: reduce, >1.0: increase)
+Camera.imageScale: 1.0
+
 # Transformation from camera to body-frame (imu)
 Tbc: !!opencv-matrix
    rows: 4
