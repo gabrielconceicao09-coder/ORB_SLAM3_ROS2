@@ -196,14 +196,14 @@ void MonoInertialNode::SyncWithImu_Track()
             double tPrimeiraImu = vImuMeas.front().t;
             double difTempos = tUltimaImu-tImg;
             RCLCPP_INFO(this->get_logger(), "7) Passamos pela sincronização com IMU. Enviando %lu pontos.", vImuMeas.size());
-            RCLCPP_INFO(this->get_logger(), "7.5) Tempos dos dados: tImagem: %d, tPrimeiraImu: %f, tÚltimaImu: %f, diferença de tempos: %f", tImg, tPrimeiraImu, tUltimaImu, difTempos);
+            RCLCPP_INFO(this->get_logger(), "7.5) Tempos dos dados: tImagem: %f, tPrimeiraImu: %f, tÚltimaImu: %f, diferença de tempos: %f", tImg, tPrimeiraImu, tUltimaImu, difTempos);
             try{
             Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
             RCLCPP_INFO(this->get_logger(), "8) TrackMonocular chamado com sucesso!");
 
             /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
             TfMsg transf_msg;
-            try {
+            try {  
                 TfMsg odom_to_base_msg = tf_buffer_->lookupTransform("odom", "base_link", tf2::TimePointZero);
                 auto translation = odom_to_base_msg.transform.translation;
                 auto rotation = odom_to_base_msg.transform.rotation;
