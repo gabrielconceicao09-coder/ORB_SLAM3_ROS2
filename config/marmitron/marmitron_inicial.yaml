@@ -46,14 +46,14 @@ IMU.NoiseGyro: 0.0011301288662456544 #Intrínsecos do MPU9250, multiplicados por
 IMU.NoiseAcc: 0.016922433845750744
 IMU.GyroWalk: 1.983585587271295e-04
 IMU.AccWalk: 0.0023311393011981888
-IMU.Frequency: 100
+IMU.Frequency: 200
 
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
 
 # ORB Extractor: Number of features per image
-ORBextractor.nFeatures: 1200
+ORBextractor.nFeatures: 2500
 
 # ORB Extractor: Scale factor between levels in the scale pyramid 	
 ORBextractor.scaleFactor: 1.2
@@ -65,8 +65,8 @@ ORBextractor.nLevels: 8
 # Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
 # Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
 # You can lower these values if your images have low contrast			
-ORBextractor.iniThFAST: 20
-ORBextractor.minThFAST: 7
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 5
 
 #--------------------------------------------------------------------------------------------
 # Viewer Parameters
