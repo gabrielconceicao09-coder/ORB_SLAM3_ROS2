@@ -49,9 +49,9 @@ IMU.GyroWalk: 1.0e-5
 IMU.AccWalk: 1.0e-4
 IMU.Frequency: 200
 
-IMU.InitBiasGyroX: -0.0447
-IMU.InitBiasGyroY: 0.0266
-IMU.InitBiasGyroZ: 0.0245
+#IMU.InitBiasGyroX: -0.0447
+#IMU.InitBiasGyroY: 0.0266
+#IMU.InitBiasGyroZ: 0.0245
 
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
