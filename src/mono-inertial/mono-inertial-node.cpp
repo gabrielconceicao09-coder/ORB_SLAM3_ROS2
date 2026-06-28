@@ -223,25 +223,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 RCLCPP_WARN(this->get_logger(), "Furo no Buffer: IMU iniciou após o último frame visual. Pulando.");
                 continue;
             }
-            
-            // CORREÇÃO DO ENVELOPE: Se o dado da IMU terminou ligeiramente antes por jitter, 
-            // nós forçamos o último ponto a esticar até o tImg para não quebrar a integração do g2o.
-            if (vImuMeas.back().t < tImg) {
-                if ((tImg - vImuMeas.back().t) <= max_tolerance) {
-                    vImuMeas.back().t = tImg; // Estica o ponto de forma segura
-                } else {
-                    RCLCPP_WARN(this->get_logger(), "Aviso: Atraso crítico da IMU (%f < %f). Pulando frame.", vImuMeas.back().t, tImg);
-                    continue;
-                }
-            }
-
-            // Varredura interna contra Delta T zerado ou negativo
-            for (size_t i = 1; i < vImuMeas.size(); i++) {
-                double dt = vImuMeas[i].t - vImuMeas[i-1].t;
-                if (dt <= 0.0) {
-                    vImuMeas[i].t = vImuMeas[i-1].t + 0.005;
-                }
-            }
+        
 
             if(m_SLAM->GetTrackingState() == 4) { // LOST
                 if(vImuMeas.size() > 30) { 
