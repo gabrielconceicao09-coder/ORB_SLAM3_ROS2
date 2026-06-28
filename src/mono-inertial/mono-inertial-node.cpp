@@ -238,7 +238,7 @@ void MonoInertialNode::SyncWithImu_Track()
             for(size_t i=1;i<vImuMeas.size();i++)
             {
                 double dt = vImuMeas[i].t - vImuMeas[i-1].t;
-
+                RCLCPP_INFO(this->get_logger(), "DT %i - %i: %d", i, i-1, dt);
                 if(std::isnan(dt))
                 {
                     RCLCPP_ERROR(this->get_logger(),
