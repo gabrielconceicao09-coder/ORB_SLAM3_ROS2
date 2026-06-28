@@ -149,8 +149,6 @@ void MonoInertialNode::SyncWithImu_Track()
 
             vImuMeas.clear();
             double tLastImuInPacket = -1.0;
-            // Fator de escala baseado na calibração do seu sensor parado (~10.92 m/s² para 9.81 m/s²)
-            double fator_escala_acc = 9.81 / 10.9295; 
 
             while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
             {
@@ -165,7 +163,6 @@ void MonoInertialNode::SyncWithImu_Track()
                 float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f); // Remove o offset de -1.09
 
                 // 2. Ajuste fino de escala para garantir que parado dê exatamente 9.81 m/s²
-                // (Magnitude média medida foi ~9.8425)
                 float fator_escala = 9.81f / 9.8425f;
 
                 cv::Point3f acc(
@@ -202,7 +199,6 @@ void MonoInertialNode::SyncWithImu_Track()
                     float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f); // Remove o offset de -1.09
 
                     // 2. Ajuste fino de escala para garantir que parado dê exatamente 9.81 m/s²
-                    // (Magnitude média medida foi ~9.8425)
                     float fator_escala = 9.81f / 9.8425f;
 
                     cv::Point3f acc(
@@ -230,9 +226,29 @@ void MonoInertialNode::SyncWithImu_Track()
             }
         }
 
-        // 4. Executa o Tracking
+        // 4. Executa o Tracking com Proteção Temporal contra NaN
         if(!vImuMeas.empty() && !Img.empty()) {
             if(vImuMeas.size() < 2) continue;
+
+            // [ALTERAÇÃO ADICIONADA]: Validação estrita de envelope temporal
+            // Garante que as leituras de IMU cubram o período entre o último frame e o frame atual
+            if (tLastImg >= 0.0 && vImuMeas.front().t > tLastImg) {
+                RCLCPP_WARN(this->get_logger(), "Aviso: Linha temporal da IMU iniciou DEPOIS do último frame visual (%f > %f). Pulando frame.", vImuMeas.front().t, tLastImg);
+                continue;
+            }
+            if (vImuMeas.back().t < tImg) {
+                RCLCPP_WARN(this->get_logger(), "Aviso: Dados da IMU terminaram ANTES do timestamp do frame atual (%f < %f). Pulando frame.", vImuMeas.back().t, tImg);
+                continue;
+            }
+
+            // [ALTERAÇÃO ADICIONADA]: Varredura interna para corrigir Delta T inválido (zerado ou negativo)
+            for (size_t i = 1; i < vImuMeas.size(); i++) {
+                double dt = vImuMeas[i].t - vImuMeas[i-1].t;
+                if (dt <= 0.0) {
+                    RCLCPP_ERROR(this->get_logger(), "Erro Temporal Interno: Delta T inválido detectado na IMU (%f). Aplicando correção de 200 Hz.", dt);
+                    vImuMeas[i].t = vImuMeas[i-1].t + 0.005;
+                }
+            }
 
             if(m_SLAM->GetTrackingState() == 4) { // LOST
                 if(vImuMeas.size() > 30) { 
