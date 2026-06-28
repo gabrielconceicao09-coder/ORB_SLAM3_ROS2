@@ -167,9 +167,9 @@ void MonoInertialNode::SyncWithImu_Track()
                     imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
                 );
                 cv::Point3f gyr(
-                    imuBuf_.front()->angular_velocity.x, 
-                    imuBuf_.front()->angular_velocity.y, 
-                    imuBuf_.front()->angular_velocity.z
+                    -imuBuf_.front()->angular_velocity.x, 
+                    -imuBuf_.front()->angular_velocity.y, 
+                    -imuBuf_.front()->angular_velocity.z
                 );
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
@@ -195,9 +195,9 @@ void MonoInertialNode::SyncWithImu_Track()
                         imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                     );
                     cv::Point3f gyr(
-                        imuBuf_.front()->angular_velocity.x, 
-                        imuBuf_.front()->angular_velocity.y, 
-                        imuBuf_.front()->angular_velocity.z
+                        -imuBuf_.front()->angular_velocity.x, 
+                        -imuBuf_.front()->angular_velocity.y, 
+                        -imuBuf_.front()->angular_velocity.z
                     );
 
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
