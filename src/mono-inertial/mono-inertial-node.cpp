@@ -178,8 +178,8 @@ void MonoInertialNode::SyncWithImu_Track()
                 // Mantemos a ordem original dos eixos conforme calibrado pelo Kalibr
                 cv::Point3f acc(
                     imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
+                    -imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                    -imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
                 );
                 cv::Point3f gyr(
                     imuBuf_.front()->angular_velocity.x, 
@@ -212,8 +212,8 @@ void MonoInertialNode::SyncWithImu_Track()
                 if (t > tImg) {
                     cv::Point3f acc(
                         imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc
+                        -imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                        -imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                     );
                     cv::Point3f gyr(
                         imuBuf_.front()->angular_velocity.x, 
