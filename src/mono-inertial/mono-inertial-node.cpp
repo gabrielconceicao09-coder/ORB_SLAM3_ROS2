@@ -102,167 +102,92 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 
 void MonoInertialNode::SyncWithImu_Track()
 {
-    double tLastImg = -1.0;
-    const double kalibr_timeshift = -0.0185970677;
-
     while (rclcpp::ok())
     {
-        cv::Mat Img;
-        ImageMsg::SharedPtr img_msg = nullptr;
+        ImageMsg::SharedPtr img;
 
-        double tImg_cam = 0.0;
-        double tImg = 0.0;
-
-        // =========================================================
-        // 1. GET IMAGE (NON-BLOCKING)
-        // =========================================================
+        // =========================
+        // 1. GET IMAGE (NO TIME MOD)
+        // =========================
         {
-            std::unique_lock<std::mutex> lockImg(bufImgMutex_);
+            std::unique_lock<std::mutex> lock(bufImgMutex_);
 
             if (imgBuf_.empty()) {
-                lockImg.unlock();
+                lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
 
-            img_msg = imgBuf_.front();
-            tImg_cam = Utility::StampToSec(img_msg->header.stamp);
-            tImg = tImg_cam + kalibr_timeshift;
+            img = imgBuf_.front();
+            imgBuf_.pop();
         }
 
-        RCLCPP_INFO(this->get_logger(),
-            "\n================ FRAME ================\n"
-            "t_cam=%.6f t_aligned=%.6f",
-            tImg_cam, tImg);
+        double tImg = Utility::StampToSec(img->header.stamp);
 
-        // =========================================================
-        // 2. IMAGE VALIDATION (DO NOT BLOCK ON IMU)
-        // =========================================================
-        {
-            std::unique_lock<std::mutex> lockImg(bufImgMutex_);
-            if (!imgBuf_.empty() && imgBuf_.front() == img_msg) {
-                Img = GetImage(imgBuf_.front());
-                imgBuf_.pop();
-            }
-        }
-
-        if (Img.empty()) {
-            RCLCPP_WARN(this->get_logger(), "Imagem vazia, pulando frame");
-            continue;
-        }
-
-        // =========================================================
-        // 3. BUILD IMU PACKET (SAFE CONSUMPTION)
-        // =========================================================
-        std::vector<ORB_SLAM3::IMU::Point> vImuMeas;
+        // =========================
+        // 2. COLLECT IMU UNTIL IMAGE TIME
+        // =========================
+        std::vector<ORB_SLAM3::IMU::Point> imuData;
 
         {
-            std::unique_lock<std::mutex> lockImu(bufImuMutex_);
+            std::unique_lock<std::mutex> lock(bufImuMutex_);
 
-            if (imuBuf_.empty()) {
-                RCLCPP_WARN(this->get_logger(), "IMU buffer vazio");
+            if (imuBuf_.size() < 2) {
+                continue;
             }
 
-            double tPrev = -1.0;
-            size_t idx = 0;
+            double lastImgTime = tImg;
 
             while (!imuBuf_.empty())
             {
                 auto imu = imuBuf_.front();
                 double t = Utility::StampToSec(imu->header.stamp);
 
-                // não avançar além da imagem
-                if (t > tImg)
+                if (t > lastImgTime)
                     break;
 
-                if (std::isnan(t)) {
-                    RCLCPP_ERROR(this->get_logger(), "IMU timestamp NaN -> drop");
-                    imuBuf_.pop();
-                    continue;
-                }
+                cv::Point3f acc(
+                    imu->linear_acceleration.x,
+                    imu->linear_acceleration.y,
+                    imu->linear_acceleration.z);
 
-                if (tPrev > 0.0) {
-                    double dt = t - tPrev;
+                cv::Point3f gyr(
+                    imu->angular_velocity.x,
+                    imu->angular_velocity.y,
+                    imu->angular_velocity.z);
 
-                    RCLCPP_INFO(this->get_logger(),
-                        "[IMU %zu] dt=%.9f t=%.6f",
-                        idx, dt, t);
+                imuData.emplace_back(acc, gyr, t);
 
-                    if (!std::isfinite(dt) || dt <= 0.0) {
-                        RCLCPP_ERROR(this->get_logger(),
-                            "DT inválido -> reset IMU stream");
-                        imuBuf_.pop();
-                        continue;
-                    }
-
-                    if (dt > 0.02) {
-                        RCLCPP_WARN(this->get_logger(),
-                            "DT grande: %.6f", dt);
-                    }
-                }
-
-                // =========================
-                // IMU conversion
-                // =========================
-                float ax = imu->linear_acceleration.x;
-                float ay = imu->linear_acceleration.y;
-                float az = imu->linear_acceleration.z;
-
-                float gx = imu->angular_velocity.x;
-                float gy = imu->angular_velocity.y;
-                float gz = imu->angular_velocity.z;
-
-                float scale = 9.81f / 9.8425f;
-
-                cv::Point3f acc(ax * scale, ay * scale, az * scale);
-                cv::Point3f gyr(gx, gy, gz);
-
-                vImuMeas.emplace_back(acc, gyr, t);
-
-                tPrev = t;
                 imuBuf_.pop();
-                idx++;
-            }
-
-            if (!vImuMeas.empty()) {
-                RCLCPP_INFO(this->get_logger(),
-                    "IMU PACKET FINAL: %zu samples | %.6f → %.6f",
-                    vImuMeas.size(),
-                    vImuMeas.front().t,
-                    vImuMeas.back().t);
             }
         }
 
-        // =========================================================
-        // 4. BASIC VALIDATION BEFORE SLAM
-        // =========================================================
-        if (vImuMeas.size() < 2) {
-            RCLCPP_WARN(this->get_logger(), "IMU insuficiente para frame");
+        // =========================
+        // 3. VALIDATE (VERY IMPORTANT)
+        // =========================
+        if (imuData.size() < 2)
             continue;
+
+        // check dt consistency
+        for (size_t i = 1; i < imuData.size(); i++)
+        {
+            double dt = imuData[i].t - imuData[i - 1].t;
+
+            if (!std::isfinite(dt) || dt <= 0.0)
+            {
+                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED");
+                return;
+            }
         }
 
-        double dt_img = (tLastImg > 0.0) ? (tImg - tLastImg) : 0.0;
-
-        RCLCPP_INFO(this->get_logger(),
-            "TRACK INPUT: dt_img=%.6f imu=%zu",
-            dt_img, vImuMeas.size());
-
-        // =========================================================
-        // 5. CALL SLAM
-        // =========================================================
+        // =========================
+        // 4. RUN SLAM
+        // =========================
         try {
-            m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
-            tLastImg = tImg;
-
-            if (m_SLAM->GetTrackingState() == 2) {
-                RCLCPP_INFO(this->get_logger(), "TRACKING OK");
-            }
+            m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
         }
         catch (const std::exception &e) {
-            RCLCPP_ERROR(this->get_logger(), "SLAM exception: %s", e.what());
-        }
-        catch (...) {
-            RCLCPP_ERROR(this->get_logger(), "unknown SLAM exception");
+            RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
         }
     }
 }
