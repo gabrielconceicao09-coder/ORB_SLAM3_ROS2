@@ -253,13 +253,18 @@ void MonoInertialNode::SyncWithImu_Track()
                         tImg, tPrimeiraImu, tUltimaImu, difTempos);
             
             try {
-                // PRINT DE DIAGNÓSTICO DA MATRIZ Tbc INTERNA DO SLAM
-                cv::Mat Tbc_orbslam = m_SLAM->GetTransformCameraToBody().matrix();
-                RCLCPP_INFO(this->get_logger(), "=== MATRIZ Tbc COMPILAÇÃO INTERNA ===");
-                RCLCPP_INFO(this->get_logger(), "[%f, %f, %f, %f]", Tbc_orbslam.at<float>(0,0), Tbc_orbslam.at<float>(0,1), Tbc_orbslam.at<float>(0,2), Tbc_orbslam.at<float>(0,3));
-                RCLCPP_INFO(this->get_logger(), "[%f, %f, %f, %f]", Tbc_orbslam.at<float>(1,0), Tbc_orbslam.at<float>(1,1), Tbc_orbslam.at<float>(1,2), Tbc_orbslam.at<float>(1,3));
-                RCLCPP_INFO(this->get_logger(), "[%f, %f, %f, %f]", Tbc_orbslam.at<float>(2,0), Tbc_orbslam.at<float>(2,1), Tbc_orbslam.at<float>(2,2), Tbc_orbslam.at<float>(2,3));
-                // Envia a imagem e o vetor contínuo blindado de IMU para o motor do SLAM
+                // ACESSO DIRETO AO REFERENCIAL DO REPOSITÓRIO OFICIAL DA UZ-SLAMLab
+                if (m_SLAM->mpTracker && m_SLAM->mpTracker->mCurrentFrame.mpImuCalib) {
+                    Sophus::SE3f Tbc_sophus = m_SLAM->mpTracker->mCurrentFrame.mpImuCalib->Tbc_;
+                    Eigen::Matrix4f Tbc_matrix = Tbc_sophus.matrix();
+                    
+                    RCLCPP_INFO(this->get_logger(), "=== MATRIZ Tbc NA MEMÓRIA DO ORB-SLAM3 ===");
+                    RCLCPP_INFO(this->get_logger(), "[%f, %f, %f, %f]", Tbc_matrix(0,0), Tbc_matrix(0,1), Tbc_matrix(0,2), Tbc_matrix(0,3));
+                    RCLCPP_INFO(this->get_logger(), "[%f, %f, %f, %f]", Tbc_matrix(1,0), Tbc_matrix(1,1), Tbc_matrix(1,2), Tbc_matrix(1,3));
+                    RCLCPP_INFO(this->get_logger(), "[%f, %f, %f, %f]", Tbc_matrix(2,0), Tbc_matrix(2,1), Tbc_matrix(2,2), Tbc_matrix(2,3));
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Ainda não foi possível acessar as estruturas internas de calibração.");
+                }
                 Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
                 
                 tLastImg = tImg; // Salva o tempo atual como histórico de sucesso
