@@ -249,6 +249,73 @@ void MonoInertialNode::SyncWithImu_Track()
                 }
             }
 
+            RCLCPP_INFO(this->get_logger(),
+                "---------- IMU PACKET (%lu medidas) ----------",
+                vImuMeas.size());
+
+            for(size_t i=1;i<vImuMeas.size();i++)
+            {
+                double dt = vImuMeas[i].t - vImuMeas[i-1].t;
+
+                if(std::isnan(dt))
+                {
+                    RCLCPP_ERROR(this->get_logger(),
+                        "DT = NAN");
+                }
+
+                if(dt<=0.0)
+                {
+                    RCLCPP_ERROR(this->get_logger(),
+                        "DT <= 0 (%f)  t1=%f  t2=%f",
+                        dt,
+                        vImuMeas[i-1].t,
+                        vImuMeas[i].t);
+                }
+
+                if(dt>0.02)
+                {
+                    RCLCPP_WARN(this->get_logger(),
+                        "DT grande (%f)",dt);
+                }
+            }
+            for(size_t i=0;i<vImuMeas.size();i++)
+            {
+                auto &m=vImuMeas[i];
+
+                if(std::isnan(m.a.x) ||
+                std::isnan(m.a.y) ||
+                std::isnan(m.a.z) ||
+                std::isnan(m.w.x) ||
+                std::isnan(m.w.y) ||
+                std::isnan(m.w.z))
+                {
+                    RCLCPP_ERROR(this->get_logger(),
+                        "IMU[%lu] contem NAN",i);
+                }
+            }
+            RCLCPP_INFO(this->get_logger(),
+                "Frame %.6f  IMU %.6f -> %.6f",
+                tImg,
+                vImuMeas.front().t,
+                vImuMeas.back().t);
+            for(size_t i=0;i<vImuMeas.size();i++)
+            {
+                auto &m=vImuMeas[i];
+
+                double norm =
+                    std::sqrt(
+                        m.a.x*m.a.x +
+                        m.a.y*m.a.y +
+                        m.a.z*m.a.z);
+
+                if(norm<7.0 || norm>12.0)
+                {
+                    RCLCPP_WARN(this->get_logger(),
+                        "Accel suspeita [%lu] = %.3f",
+                        i,
+                        norm);
+                }
+            }
             try {
                 Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
                 tLastImg = tImg; 
