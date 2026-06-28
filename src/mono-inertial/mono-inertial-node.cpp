@@ -103,7 +103,7 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 void MonoInertialNode::SyncWithImu_Track()
 {   
     double tLastImg = -1.0;
-    // Timeshift calculado pelo Kalibr: t_imu = t_cam + shift
+    // Timeshift original do Kalibr
     const double kalibr_timeshift = -0.0185970677; 
 
     while(rclcpp::ok())
@@ -121,8 +121,9 @@ void MonoInertialNode::SyncWithImu_Track()
                 continue;
             }
             img_msg_ponteiro = imgBuf_.front();
-            // Aplica o timeshift do Kalibr no timestamp da imagem para alinhar com a linha do tempo da IMU
-            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp) + kalibr_timeshift/2;
+            
+            // CORREÇÃO: Aplica o shift cheio na convenção correta (t_imu = t_cam + shift)
+            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp) + kalibr_timeshift;
         }
 
         vector<ORB_SLAM3::IMU::Point> vImuMeas;
@@ -131,6 +132,8 @@ void MonoInertialNode::SyncWithImu_Track()
         {
             std::unique_lock<std::mutex> lockImu(bufImuMutex_);
 
+            // Se o buffer da IMU está vazio ou o último dado da IMU ainda não alcançou o tempo da imagem,
+            // esperamos o driver da ESP32 entregar mais pacotes.
             if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
             {
                 lockImu.unlock();
@@ -150,6 +153,7 @@ void MonoInertialNode::SyncWithImu_Track()
             vImuMeas.clear();
             double tLastImuInPacket = -1.0;
 
+            // Extrai os pontos do buffer até o tempo da imagem atual
             while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
             {
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
@@ -157,24 +161,15 @@ void MonoInertialNode::SyncWithImu_Track()
                 if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) {
                     t = tLastImuInPacket + 0.005; 
                 }
-                // 1. Remova o bias estático medido no eixo Z e X
+                
                 float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
                 float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
-                float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f); // Remove o offset de -1.09
+                float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f);
 
-                // 2. Ajuste fino de escala para garantir que parado dê exatamente 9.81 m/s²
                 float fator_escala = 9.81f / 9.8425f;
 
-                cv::Point3f acc(
-                    acc_x_corrigido * fator_escala,
-                    acc_y_corrigido * fator_escala,
-                    acc_z_corrigido * fator_escala
-                );
-                cv::Point3f gyr(
-                    imuBuf_.front()->angular_velocity.x, 
-                    imuBuf_.front()->angular_velocity.y, 
-                    imuBuf_.front()->angular_velocity.z
-                );
+                cv::Point3f acc(acc_x_corrigido * fator_escala, acc_y_corrigido * fator_escala, acc_z_corrigido * fator_escala);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                 tLastImuInPacket = t;
@@ -186,34 +181,21 @@ void MonoInertialNode::SyncWithImu_Track()
                 }
             }
 
-            // Ponto do futuro para fechamento de envelope
+            // Ponto do futuro para fechamento estrito de envelope
             if(!imuBuf_.empty())
             {
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
                 if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) t = tLastImuInPacket + 0.005;
 
-                if (t > tImg) {
-                    // 1. Remova o bias estático medido no eixo Z e X
-                    float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
-                    float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
-                    float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f); // Remove o offset de -1.09
+                float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
+                float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
+                float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f);
+                float fator_escala = 9.81f / 9.8425f;
 
-                    // 2. Ajuste fino de escala para garantir que parado dê exatamente 9.81 m/s²
-                    float fator_escala = 9.81f / 9.8425f;
+                cv::Point3f acc(acc_x_corrigido * fator_escala, acc_y_corrigido * fator_escala, acc_z_corrigido * fator_escala);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
 
-                    cv::Point3f acc(
-                        acc_x_corrigido * fator_escala,
-                        acc_y_corrigido * fator_escala,
-                        acc_z_corrigido * fator_escala
-                    );
-                    cv::Point3f gyr(
-                        imuBuf_.front()->angular_velocity.x, 
-                        imuBuf_.front()->angular_velocity.y, 
-                        imuBuf_.front()->angular_velocity.z
-                    );
-
-                    vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
-                }
+                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
             }
         } 
 
@@ -226,26 +208,33 @@ void MonoInertialNode::SyncWithImu_Track()
             }
         }
 
-        // 4. Executa o Tracking com Proteção Temporal contra NaN
+        // 4. Executa o Tracking com Validação Adaptativa
         if(!vImuMeas.empty() && !Img.empty()) {
             if(vImuMeas.size() < 2) continue;
 
-            // [ALTERAÇÃO ADICIONADA]: Validação estrita de envelope temporal
-            // Garante que as leituras de IMU cubram o período entre o último frame e o frame atual
-            if (tLastImg >= 0.0 && vImuMeas.front().t > tLastImg) {
-                RCLCPP_WARN(this->get_logger(), "Aviso: Linha temporal da IMU iniciou DEPOIS do último frame visual (%f > %f). Pulando frame.", vImuMeas.front().t, tLastImg);
+            // Tolerância dinâmica de 10ms para pequenas flutuações de rede do Wi-Fi/Serial
+            const double max_tolerance = 0.010; 
+
+            if (tLastImg >= 0.0 && vImuMeas.front().t > (tLastImg + max_tolerance)) {
+                RCLCPP_WARN(this->get_logger(), "Furo no Buffer: IMU iniciou após o último frame visual. Pulando.");
                 continue;
             }
+            
+            // CORREÇÃO DO ENVELOPE: Se o dado da IMU terminou ligeiramente antes por jitter, 
+            // nós forçamos o último ponto a esticar até o tImg para não quebrar a integração do g2o.
             if (vImuMeas.back().t < tImg) {
-                RCLCPP_WARN(this->get_logger(), "Aviso: Dados da IMU terminaram ANTES do timestamp do frame atual (%f < %f). Pulando frame.", vImuMeas.back().t, tImg);
-                continue;
+                if ((tImg - vImuMeas.back().t) <= max_tolerance) {
+                    vImuMeas.back().t = tImg; // Estica o ponto de forma segura
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Aviso: Atraso crítico da IMU (%f < %f). Pulando frame.", vImuMeas.back().t, tImg);
+                    continue;
+                }
             }
 
-            // [ALTERAÇÃO ADICIONADA]: Varredura interna para corrigir Delta T inválido (zerado ou negativo)
+            // Varredura interna contra Delta T zerado ou negativo
             for (size_t i = 1; i < vImuMeas.size(); i++) {
                 double dt = vImuMeas[i].t - vImuMeas[i-1].t;
                 if (dt <= 0.0) {
-                    RCLCPP_ERROR(this->get_logger(), "Erro Temporal Interno: Delta T inválido detectado na IMU (%f). Aplicando correção de 200 Hz.", dt);
                     vImuMeas[i].t = vImuMeas[i-1].t + 0.005;
                 }
             }
@@ -257,7 +246,6 @@ void MonoInertialNode::SyncWithImu_Track()
             }
 
             try {
-                // Envia dados dinâmicos reais sincronizados com o hardware
                 Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
                 tLastImg = tImg; 
                 
