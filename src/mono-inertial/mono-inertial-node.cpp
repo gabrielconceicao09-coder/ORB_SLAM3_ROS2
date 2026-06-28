@@ -102,8 +102,9 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 
 void MonoInertialNode::SyncWithImu_Track()
 {   
-    // Guarda o timestamp da última imagem processada com sucesso para garantir continuidade perfeita
     double tLastImg = -1.0;
+    // Timeshift calculado pelo Kalibr: t_imu = t_cam + shift
+    const double kalibr_timeshift = -0.0185970677; 
 
     while(rclcpp::ok())
     {
@@ -111,7 +112,7 @@ void MonoInertialNode::SyncWithImu_Track()
         double tImg = 0.0;
         ImageMsg::SharedPtr img_msg_ponteiro = nullptr;
         
-        // 1. ESCOPO ISOLADO: Recupera a imagem atual do buffer
+        // 1. Recupera a imagem atual do buffer
         {
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
             if (imgBuf_.empty()){
@@ -120,16 +121,16 @@ void MonoInertialNode::SyncWithImu_Track()
                 continue;
             }
             img_msg_ponteiro = imgBuf_.front();
-            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp);
+            // Aplica o timeshift do Kalibr no timestamp da imagem para alinhar com a linha do tempo da IMU
+            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp) + kalibr_timeshift;
         }
 
         vector<ORB_SLAM3::IMU::Point> vImuMeas;
         
-        // 2. ESCOPO ISOLADO: Sincronização temporal e captura dos dados brutos da IMU
+        // 2. Sincronização temporal e captura dos dados REAIS da IMU
         {
             std::unique_lock<std::mutex> lockImu(bufImuMutex_);
 
-            // Garante que temos dados de IMU suficientes para envelopar o frame da imagem
             if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
             {
                 lockImu.unlock();
@@ -137,7 +138,6 @@ void MonoInertialNode::SyncWithImu_Track()
                 continue; 
             }
 
-            // Histórico inicial para o primeiro frame absoluto
             if (tLastImg < 0.0) {
                 if (Utility::StampToSec(imuBuf_.front()->header.stamp) >= tImg) {
                     lockImu.unlock();
@@ -148,42 +148,29 @@ void MonoInertialNode::SyncWithImu_Track()
             }
 
             vImuMeas.clear();
-
-            // Parâmetros estáticos do seu hardware e calibração
-            double fator_escala_acc = 9.81 / 10.9391;
             double tLastImuInPacket = -1.0;
+            // Fator de escala baseado na calibração do seu sensor parado (~10.92 m/s² para 9.81 m/s²)
+            double fator_escala_acc = 9.81 / 10.9295; 
 
-            // Loop de esvaziamento do buffer da IMU até o tempo da imagem
             while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
             {
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
                 
-                // Proteção matemática contra Delta T nulo ou negativo (evita divisões por zero)
                 if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) {
-                    t = tLastImuInPacket + 0.005; // Força avanço infinitesimal coerente com 200Hz
+                    t = tLastImuInPacket + 0.005; 
                 }
 
-                // Vetores brutos escalados para a gravidade terrestre padrão (9.81 m/s²)
+                // RESTAURADO: Coleta dos dados dinâmicos reais vindos da ESP32
                 cv::Point3f acc(
-                    0.0f,//imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                    0.0f,//imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                    -10.92f//imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
+                    imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                    imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                    imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
                 );
                 cv::Point3f gyr(
-                    0.0f,//imuBuf_.front()->angular_velocity.x, 
-                    0.0f,//imuBuf_.front()->angular_velocity.y, 
-                    0.0f//imuBuf_.front()->angular_velocity.z
+                    imuBuf_.front()->angular_velocity.x, 
+                    imuBuf_.front()->angular_velocity.y, 
+                    imuBuf_.front()->angular_velocity.z
                 );
-
-                // BLINDAGEM CONTRA LEITURAS NAN OU INFINITAS DA ESP32
-                if (std::isnan(acc.x) || std::isnan(acc.y) || std::isnan(acc.z) ||
-                    std::isnan(gyr.x) || std::isnan(gyr.y) || std::isnan(gyr.z) ||
-                    std::isinf(acc.x) || std::isinf(acc.y) || std::isinf(acc.z) ||
-                    std::isinf(gyr.x) || std::isinf(gyr.y) || std::isinf(gyr.z)) 
-                {
-                    acc = cv::Point3f(0.0f, 0.0f, -10.9295f); // Mantém a gravidade nominal invertida do seu sensor parado
-                    gyr = cv::Point3f(0.0f, 0.0f, 0.0f);
-                }
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                 tLastImuInPacket = t;
@@ -195,42 +182,30 @@ void MonoInertialNode::SyncWithImu_Track()
                 }
             }
 
-            // Inserção do ponto do futuro imediato para fechamento de envelope do integrador
+            // Ponto do futuro para fechamento de envelope
             if(!imuBuf_.empty())
             {
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
-                
-                if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) {
-                    t = tLastImuInPacket + 0.005;
-                }
+                if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) t = tLastImuInPacket + 0.005;
 
                 if (t > tImg) {
                     cv::Point3f acc(
-                        0.0f,//imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                        0.0f,//imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                        -10.92f//imuBuf_.front()->linear_acceleration.z * fator_escala_acc
+                        imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                        imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                     );
                     cv::Point3f gyr(
-                        0.0f,//imuBuf_.front()->angular_velocity.x, 
-                        0.0f,//imuBuf_.front()->angular_velocity.y, 
-                        0.0f//imuBuf_.front()->angular_velocity.z
+                        imuBuf_.front()->angular_velocity.x, 
+                        imuBuf_.front()->angular_velocity.y, 
+                        imuBuf_.front()->angular_velocity.z
                     );
-
-                    if (std::isnan(acc.x) || std::isnan(acc.y) || std::isnan(acc.z) ||
-                        std::isnan(gyr.x) || std::isnan(gyr.y) || std::isnan(gyr.z) ||
-                        std::isinf(acc.x) || std::isinf(acc.y) || std::isinf(acc.z) ||
-                        std::isinf(gyr.x) || std::isinf(gyr.y) || std::isinf(gyr.z)) 
-                    {
-                        acc = cv::Point3f(0.0f, 0.0f, -10.9295f);
-                        gyr = cv::Point3f(0.0f, 0.0f, 0.0f);
-                    }
 
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                 }
             }
         } 
 
-        // 3. Extrai e remove a imagem processada do buffer de forma limpa
+        // 3. Remove a imagem processada do buffer
         {
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
             if(!imgBuf_.empty() && imgBuf_.front() == img_msg_ponteiro) {
@@ -239,36 +214,26 @@ void MonoInertialNode::SyncWithImu_Track()
             }
         }
 
-        // 4. Executa o Tracking Inercial se os dados contínuos estiverem preenchidos
+        // 4. Executa o Tracking
         if(!vImuMeas.empty() && !Img.empty()) {
-            
-            if(vImuMeas.size() < 2) {
-                continue;
-            }
+            if(vImuMeas.size() < 2) continue;
 
-            // =========================================================================
-            // ALTERAÇÃO COMPORTAMENTAL: PROTEÇÃO CONTRA TRACKING LOST PREMATURO
-            // Se o SLAM perdeu o rastreamento visual (Estado 4 = LOST), impedimos o 
-            // acúmulo de uma esteira gigante de IMU que faria o integrador numérico explodir.
-            // =========================================================================
-            if(m_SLAM->GetTrackingState() == 4) {
+            if(m_SLAM->GetTrackingState() == 4) { // LOST
                 if(vImuMeas.size() > 30) { 
-                    RCLCPP_WARN(this->get_logger(), "Tracking perdido. Reduzindo janela de integração para evitar NaN.");
-                    vImuMeas.erase(vImuMeas.begin(), vImuMeas.end() - 10); // Mantém apenas o envelope mínimo de 10 pontos
+                    vImuMeas.erase(vImuMeas.begin(), vImuMeas.end() - 10); 
                 }
             }
 
             try {
-                // Envia os dados limpos e temporizados para o motor do ORB-SLAM3
+                // Envia dados dinâmicos reais sincronizados com o hardware
                 Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
                 tLastImg = tImg; 
                 
-                int estado = m_SLAM->GetTrackingState();
-                if(estado == 2) {
-                    RCLCPP_INFO(this->get_logger(), "=== TRACKING OK (ESTADO 2) ===");
+                if(m_SLAM->GetTrackingState() == 2) {
+                    RCLCPP_INFO(this->get_logger(), "=== TRACKING DINÂMICO OK ===");
                 }
             } catch (...) {
-                RCLCPP_ERROR(this->get_logger(), "Exceção capturada no TrackMonocular.");
+                RCLCPP_ERROR(this->get_logger(), "Exceção no TrackMonocular.");
                 continue;
             }
         }  
