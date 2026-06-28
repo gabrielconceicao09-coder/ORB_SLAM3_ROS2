@@ -98,187 +98,205 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
         return m_cvImPtr->image.clone();
     }
 }
-//Solução 2 do Gemini:
+
 
 void MonoInertialNode::SyncWithImu_Track()
-{   
+{
     double tLastImg = -1.0;
-    // Timeshift original do Kalibr
-    const double kalibr_timeshift = -0.0185970677; 
+
+    const double kalibr_timeshift = -0.0185970677;
 
     while(rclcpp::ok())
     {
         cv::Mat Img;
+        ImageMsg::SharedPtr img_msg = nullptr;
+        double tImg_cam = 0.0;
         double tImg = 0.0;
-        ImageMsg::SharedPtr img_msg_ponteiro = nullptr;
-        
-        // 1. Recupera a imagem atual do buffer
+
+        // =========================
+        // 1. GET IMAGE
+        // =========================
         {
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
-            if (imgBuf_.empty()){
+
+            if (imgBuf_.empty()) {
                 lockImg.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
-            img_msg_ponteiro = imgBuf_.front();
-            
-            // CORREÇÃO: Aplica o shift cheio na convenção correta (t_imu = t_cam + shift)
-            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp) + kalibr_timeshift;
+
+            img_msg = imgBuf_.front();
+
+            tImg_cam = Utility::StampToSec(img_msg->header.stamp);
+
+            // câmera → imu reference frame (shift fixo)
+            tImg = tImg_cam + kalibr_timeshift;
         }
 
-        vector<ORB_SLAM3::IMU::Point> vImuMeas;
-        
-        // 2. Sincronização temporal e captura dos dados REAIS da IMU
+        RCLCPP_INFO(this->get_logger(),
+            "\n================ NEW FRAME ================\n"
+            "t_cam = %.6f | t_aligned = %.6f | shift = %.6f",
+            tImg_cam, tImg, kalibr_timeshift);
+
+        // =========================
+        // 2. WAIT FOR IMU DATA
+        // =========================
         {
             std::unique_lock<std::mutex> lockImu(bufImuMutex_);
 
-            // Se o buffer da IMU está vazio ou o último dado da IMU ainda não alcançou o tempo da imagem,
-            // esperamos o driver da ESP32 entregar mais pacotes.
-            if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
-            {
+            if (imuBuf_.size() < 2) {
                 lockImu.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue; 
+                continue;
             }
 
-            if (tLastImg < 0.0) {
-                if (Utility::StampToSec(imuBuf_.front()->header.stamp) >= tImg) {
-                    lockImu.unlock();
-                    std::unique_lock<std::mutex> lockImg(bufImgMutex_);
-                    if(!imgBuf_.empty()) imgBuf_.pop();
-                    continue;
-                }
+            double tImu_last = Utility::StampToSec(imuBuf_.back()->header.stamp);
+
+            if (tImu_last < tImg) {
+                RCLCPP_WARN(this->get_logger(),
+                    "IMU ainda não alcançou frame. imu_last=%.6f frame=%.6f",
+                    tImu_last, tImg);
+
+                lockImu.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue;
             }
+        }
 
-            vImuMeas.clear();
-            double tLastImuInPacket = -1.0;
+        // =========================
+        // 3. BUILD IMU PACKET
+        // =========================
+        std::vector<ORB_SLAM3::IMU::Point> vImuMeas;
 
-            // Extrai os pontos do buffer até o tempo da imagem atual
-            while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
+        double tPrev = -1.0;
+        size_t imu_count = 0;
+
+        {
+            std::unique_lock<std::mutex> lockImu(bufImuMutex_);
+
+            while(!imuBuf_.empty())
             {
-                double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
-                
-                if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) {
-                    t = tLastImuInPacket + 0.005; 
+                auto imu = imuBuf_.front();
+                double t = Utility::StampToSec(imu->header.stamp);
+
+                if (t > tImg)
+                    break;
+
+                // -------------------------
+                // DT CHECK (critical)
+                // -------------------------
+                if (tPrev > 0.0) {
+                    double dt = t - tPrev;
+
+                    RCLCPP_INFO(this->get_logger(),
+                        "[IMU DT] i=%zu dt=%.9f t_prev=%.6f t_curr=%.6f",
+                        imu_count, dt, tPrev, t);
+
+                    if (std::isnan(dt) || dt <= 0.0) {
+                        RCLCPP_ERROR(this->get_logger(),
+                            "DT INVALIDO DETECTADO -> descartando IMU (dt=%.9f)", dt);
+                        imuBuf_.pop();
+                        continue;
+                    }
+
+                    if (dt > 0.05) {
+                        RCLCPP_WARN(this->get_logger(),
+                            "DT GRANDE (%.6f s)", dt);
+                    }
                 }
-                
-                float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
-                float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
-                float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f);
 
-                float fator_escala = 9.81f / 9.8425f;
+                // -------------------------
+                // convert IMU
+                // -------------------------
+                float acc_x = imu->linear_acceleration.x - 0.3076f;
+                float acc_y = imu->linear_acceleration.y - 0.3770f;
+                float acc_z = imu->linear_acceleration.z + 1.0989f;
 
-                cv::Point3f acc(acc_x_corrigido * fator_escala, acc_y_corrigido * fator_escala, acc_z_corrigido * fator_escala);
-                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x - (-0.044f),
-                    imuBuf_.front()->angular_velocity.y - (0.023f),
-                    imuBuf_.front()->angular_velocity.z - (0.024f));
-                
-                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
-                tLastImuInPacket = t;
+                float gyr_x = imu->angular_velocity.x + 0.044f;
+                float gyr_y = imu->angular_velocity.y - 0.023f;
+                float gyr_z = imu->angular_velocity.z - 0.024f;
 
-                if (imuBuf_.size() > 1) {
-                    imuBuf_.pop();
-                } else {
-                    break; 
-                }
+                float scale = 9.81f / 9.8425f;
+
+                cv::Point3f acc(acc_x * scale, acc_y * scale, acc_z * scale);
+                cv::Point3f gyr(gyr_x, gyr_y, gyr_z);
+
+                vImuMeas.emplace_back(acc, gyr, t);
+
+                tPrev = t;
+                imuBuf_.pop();
+                imu_count++;
             }
 
-            // Ponto do futuro para fechamento estrito de envelope
-            if(!imuBuf_.empty())
-            {
-                double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
-                if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) t = tLastImuInPacket + 0.005;
-
-                float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
-                float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
-                float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f);
-                float fator_escala = 9.81f / 9.8425f;
-
-                cv::Point3f acc(acc_x_corrigido * fator_escala, acc_y_corrigido * fator_escala, acc_z_corrigido * fator_escala);
-                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x - (-0.044f),
-                    imuBuf_.front()->angular_velocity.y - (0.023f),
-                    imuBuf_.front()->angular_velocity.z - (0.024f));
-
-                vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+            // -------------------------
+            // LOG FINAL IMU RANGE
+            // -------------------------
+            if (!vImuMeas.empty()) {
+                RCLCPP_INFO(this->get_logger(),
+                    "IMU PACKET SIZE: %zu | range: %.6f → %.6f",
+                    vImuMeas.size(),
+                    vImuMeas.front().t,
+                    vImuMeas.back().t);
             }
-        } 
+        }
 
-        // 3. Remove a imagem processada do buffer
+        // =========================
+        // 4. GET IMAGE
+        // =========================
         {
             std::unique_lock<std::mutex> lockImg(bufImgMutex_);
-            if(!imgBuf_.empty() && imgBuf_.front() == img_msg_ponteiro) {
+
+            if (!imgBuf_.empty() && imgBuf_.front() == img_msg) {
                 Img = GetImage(imgBuf_.front());
                 imgBuf_.pop();
             }
         }
 
-        // 4. Executa o Tracking com Validação Adaptativa
-        if(!vImuMeas.empty() && !Img.empty()) {
-            if(vImuMeas.size() < 2) continue;
-
-            // Tolerância dinâmica de 10ms para pequenas flutuações de rede do Wi-Fi/Serial
-            const double max_tolerance = 0.010; 
-
-            if (tLastImg >= 0.0 && vImuMeas.front().t > (tLastImg + max_tolerance)) {
-                RCLCPP_WARN(this->get_logger(), "Furo no Buffer: IMU iniciou após o último frame visual. Pulando.");
-                continue;
-            }
-        
-
-            if(m_SLAM->GetTrackingState() == 4) { // LOST
-                if(vImuMeas.size() > 30) { 
-                    vImuMeas.erase(vImuMeas.begin(), vImuMeas.end() - 10); 
-                }
-            }
+        // =========================
+        // 5. VALIDATION BEFORE SLAM
+        // =========================
+        if (!Img.empty() && vImuMeas.size() > 1)
+        {
+            double dt_img = (tLastImg > 0.0) ? (tImg - tLastImg) : 0.0;
 
             RCLCPP_INFO(this->get_logger(),
-                "---------- IMU PACKET (%lu medidas) ----------",
-                vImuMeas.size());
-
-            for(size_t i=1;i<vImuMeas.size();i++)
-            {
-                double dt = vImuMeas[i].t - vImuMeas[i-1].t;
-                RCLCPP_INFO(this->get_logger(), "DT %i - %i: %d", i, i-1, dt);
-                if(std::isnan(dt))
-                {
-                    RCLCPP_ERROR(this->get_logger(),
-                        "DT = NAN");
-                }
-
-                if(dt<=0.0)
-                {
-                    RCLCPP_ERROR(this->get_logger(),
-                        "DT <= 0 (%f)  t1=%f  t2=%f",
-                        dt,
-                        vImuMeas[i-1].t,
-                        vImuMeas[i].t);
-                }
-
-                if(dt>0.02)
-                {
-                    RCLCPP_WARN(this->get_logger(),
-                        "DT grande (%f)",dt);
-                }
-            }
-
-            RCLCPP_INFO(this->get_logger(),
-                "Frame %.6f  IMU %.6f -> %.6f",
+                "\n=========== TRACK INPUT ===========\n"
+                "tImg = %.6f\n"
+                "dt_img = %.6f\n"
+                "imu_count = %zu\n"
+                "imu_start = %.6f\n"
+                "imu_end   = %.6f",
                 tImg,
+                dt_img,
+                vImuMeas.size(),
                 vImuMeas.front().t,
                 vImuMeas.back().t);
 
-            try {
-                Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
-                tLastImg = tImg; 
-                
-                if(m_SLAM->GetTrackingState() == 2) {
-                    RCLCPP_INFO(this->get_logger(), "=== TRACKING DINÂMICO OK ===");
-                }
-            } catch (...) {
-                RCLCPP_ERROR(this->get_logger(), "Exceção no TrackMonocular.");
+            // sanity check
+            if (tLastImg > 0.0 && dt_img <= 0.0) {
+                RCLCPP_ERROR(this->get_logger(),
+                    "FRAME OUT OF ORDER DETECTED");
                 continue;
             }
-        }  
+
+            try {
+                m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
+                tLastImg = tImg;
+
+                if (m_SLAM->GetTrackingState() == 2) {
+                    RCLCPP_INFO(this->get_logger(),
+                        "=== TRACKING OK ===");
+                }
+            }
+            catch (const std::exception &e) {
+                RCLCPP_ERROR(this->get_logger(),
+                    "SLAM EXCEPTION: %s", e.what());
+            }
+            catch (...) {
+                RCLCPP_ERROR(this->get_logger(),
+                    "UNKNOWN SLAM EXCEPTION");
+            }
+        }
     }
 }
 
