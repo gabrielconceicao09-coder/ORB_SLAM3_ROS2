@@ -278,44 +278,13 @@ void MonoInertialNode::SyncWithImu_Track()
                         "DT grande (%f)",dt);
                 }
             }
-            for(size_t i=0;i<vImuMeas.size();i++)
-            {
-                auto &m=vImuMeas[i];
 
-                if(std::isnan(m.a.x) ||
-                std::isnan(m.a.y) ||
-                std::isnan(m.a.z) ||
-                std::isnan(m.w.x) ||
-                std::isnan(m.w.y) ||
-                std::isnan(m.w.z))
-                {
-                    RCLCPP_ERROR(this->get_logger(),
-                        "IMU[%lu] contem NAN",i);
-                }
-            }
             RCLCPP_INFO(this->get_logger(),
                 "Frame %.6f  IMU %.6f -> %.6f",
                 tImg,
                 vImuMeas.front().t,
                 vImuMeas.back().t);
-            for(size_t i=0;i<vImuMeas.size();i++)
-            {
-                auto &m=vImuMeas[i];
 
-                double norm =
-                    std::sqrt(
-                        m.a.x*m.a.x +
-                        m.a.y*m.a.y +
-                        m.a.z*m.a.z);
-
-                if(norm<7.0 || norm>12.0)
-                {
-                    RCLCPP_WARN(this->get_logger(),
-                        "Accel suspeita [%lu] = %.3f",
-                        i,
-                        norm);
-                }
-            }
             try {
                 Sophus::SE3f Tcm = m_SLAM->TrackMonocular(Img, tImg, vImuMeas);
                 tLastImg = tImg; 
