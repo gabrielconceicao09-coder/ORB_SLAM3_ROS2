@@ -177,14 +177,14 @@ void MonoInertialNode::SyncWithImu_Track()
 
                 // Mantemos a ordem original dos eixos conforme calibrado pelo Kalibr
                 cv::Point3f acc(
-                    imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
+                        0.0f,//imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                        0.0f,//imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                        -9.81f//imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                 );
                 cv::Point3f gyr(
-                    imuBuf_.front()->angular_velocity.x, 
-                    imuBuf_.front()->angular_velocity.y, 
-                    imuBuf_.front()->angular_velocity.z
+                        0.0f,//imuBuf_.front()->angular_velocity.x, 
+                        0.0f,//imuBuf_.front()->angular_velocity.y, 
+                        0.0f//imuBuf_.front()->angular_velocity.z
                 );
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
