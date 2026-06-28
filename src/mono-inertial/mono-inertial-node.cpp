@@ -159,7 +159,6 @@ void MonoInertialNode::SyncWithImu_Track()
                 if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) {
                     t = tLastImuInPacket + 0.005; 
                 }
-
                 // 1. Remova o bias estático medido no eixo Z e X
                 float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
                 float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
@@ -173,6 +172,11 @@ void MonoInertialNode::SyncWithImu_Track()
                     acc_x_corrigido * fator_escala,
                     acc_y_corrigido * fator_escala,
                     acc_z_corrigido * fator_escala
+                );
+                cv::Point3f gyr(
+                    imuBuf_.front()->angular_velocity.x, 
+                    imuBuf_.front()->angular_velocity.y, 
+                    imuBuf_.front()->angular_velocity.z
                 );
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
@@ -205,6 +209,11 @@ void MonoInertialNode::SyncWithImu_Track()
                         acc_x_corrigido * fator_escala,
                         acc_y_corrigido * fator_escala,
                         acc_z_corrigido * fator_escala
+                    );
+                    cv::Point3f gyr(
+                        imuBuf_.front()->angular_velocity.x, 
+                        imuBuf_.front()->angular_velocity.y, 
+                        imuBuf_.front()->angular_velocity.z
                     );
 
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
