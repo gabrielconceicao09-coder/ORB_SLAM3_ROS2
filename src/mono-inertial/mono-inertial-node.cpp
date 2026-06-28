@@ -165,14 +165,14 @@ void MonoInertialNode::SyncWithImu_Track()
 
                 // Vetores brutos escalados para a gravidade terrestre padrão (9.81 m/s²)
                 cv::Point3f acc(
-                    imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
+                    0.0f,//imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                    0.0f,//imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                    -10.92f//imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
                 );
                 cv::Point3f gyr(
-                    imuBuf_.front()->angular_velocity.x, 
-                    imuBuf_.front()->angular_velocity.y, 
-                    imuBuf_.front()->angular_velocity.z
+                    0.0f,//imuBuf_.front()->angular_velocity.x, 
+                    0.0f,//imuBuf_.front()->angular_velocity.y, 
+                    0.0f//imuBuf_.front()->angular_velocity.z
                 );
 
                 // BLINDAGEM CONTRA LEITURAS NAN OU INFINITAS DA ESP32
@@ -206,14 +206,14 @@ void MonoInertialNode::SyncWithImu_Track()
 
                 if (t > tImg) {
                     cv::Point3f acc(
-                        imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc
+                        0.0f,//imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                        0.0f,//imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                        -10.92f//imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                     );
                     cv::Point3f gyr(
-                        imuBuf_.front()->angular_velocity.x, 
-                        imuBuf_.front()->angular_velocity.y, 
-                        imuBuf_.front()->angular_velocity.z
+                        0.0f,//imuBuf_.front()->angular_velocity.x, 
+                        0.0f,//imuBuf_.front()->angular_velocity.y, 
+                        0.0f//imuBuf_.front()->angular_velocity.z
                     );
 
                     if (std::isnan(acc.x) || std::isnan(acc.y) || std::isnan(acc.z) ||
