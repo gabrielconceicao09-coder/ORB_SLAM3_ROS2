@@ -175,7 +175,7 @@ void MonoInertialNode::SyncWithImu_Track()
                     t = tLastImuInPacket + 0.005; 
                 }
 
-                // Mantemos a ordem original dos eixos conforme calibrado pelo Kalibr
+                // Vetores brutos escalados para a gravidade terrestre padrão
                 cv::Point3f acc(
                     imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
                     imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
@@ -186,7 +186,18 @@ void MonoInertialNode::SyncWithImu_Track()
                     imuBuf_.front()->angular_velocity.y, 
                     imuBuf_.front()->angular_velocity.z
                 );
-                
+
+                // BLINDAGEM CONTRA LEITURAS NAN OU INFINITAS DA ESP32
+                if (std::isnan(acc.x) || std::isnan(acc.y) || std::isnan(acc.z) ||
+                    std::isnan(gyr.x) || std::isnan(gyr.y) || std::isnan(gyr.z) ||
+                    std::isinf(acc.x) || std::isinf(acc.y) || std::isinf(acc.z) ||
+                    std::isinf(gyr.x) || std::isinf(gyr.y) || std::isinf(gyr.z)) 
+                {
+                    // Se o hardware cuspir lixo por um milissegundo, força zero/gravidade nominal para não quebrar o Sophus
+                    acc = cv::Point3f(0.0f, 0.0f, 9.81f);
+                    gyr = cv::Point3f(0.0f, 0.0f, 0.0f);
+                }
+
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                 tLastImuInPacket = t; // Atualiza a âncora de tempo do último elemento adicionado
 
@@ -210,16 +221,29 @@ void MonoInertialNode::SyncWithImu_Track()
                 }
 
                 if (t > tImg) {
+                    // Vetores brutos escalados para a gravidade terrestre padrão
                     cv::Point3f acc(
                         imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
                         imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc
+                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
                     );
                     cv::Point3f gyr(
                         imuBuf_.front()->angular_velocity.x, 
                         imuBuf_.front()->angular_velocity.y, 
                         imuBuf_.front()->angular_velocity.z
                     );
+
+                    // BLINDAGEM CONTRA LEITURAS NAN OU INFINITAS DA ESP32
+                    if (std::isnan(acc.x) || std::isnan(acc.y) || std::isnan(acc.z) ||
+                        std::isnan(gyr.x) || std::isnan(gyr.y) || std::isnan(gyr.z) ||
+                        std::isinf(acc.x) || std::isinf(acc.y) || std::isinf(acc.z) ||
+                        std::isinf(gyr.x) || std::isinf(gyr.y) || std::isinf(gyr.z)) 
+                    {
+                        // Se o hardware cuspir lixo por um milissegundo, força zero/gravidade nominal para não quebrar o Sophus
+                        acc = cv::Point3f(0.0f, 0.0f, 9.81f);
+                        gyr = cv::Point3f(0.0f, 0.0f, 0.0f);
+                    }
+
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                     RCLCPP_INFO(this->get_logger(), "5) Medida IMU mais nova que a imagem (futuro) adicionada.");
                 }
