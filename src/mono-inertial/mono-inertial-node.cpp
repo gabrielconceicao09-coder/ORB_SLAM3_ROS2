@@ -148,7 +148,7 @@ void MonoInertialNode::SyncWithImu_Track()
             vImuMeas.clear();
 
             // Usamos o fator de correção puro do seu hardware para a escala terrestre (9.81 / 10.9391)
-            double fator_escala_acc = 1.0;//9.81 / 10.9391;
+            double fator_escala_acc = -9.81 / 10.9391;
 
             while(!imuBuf_.empty() && Utility::StampToSec(imuBuf_.front()->header.stamp) <= tImg)
             {
