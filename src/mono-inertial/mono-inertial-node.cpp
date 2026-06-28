@@ -156,9 +156,9 @@ void MonoInertialNode::SyncWithImu_Track()
                 
                 // Mantemos os eixos originais intocados, pois o Kalibr já cuida da rotação no .yaml
                 cv::Point3f acc(
-                    -imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                    -imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                    -imuBuf_.front()->linear_acceleration.z * fator_escala_acc
+                    imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                    imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                    imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                 );
                 cv::Point3f gyr(
                     imuBuf_.front()->angular_velocity.x, 
@@ -181,9 +181,9 @@ void MonoInertialNode::SyncWithImu_Track()
                 double t = Utility::StampToSec(imuBuf_.front()->header.stamp);
                 if (t > tImg) {
                     cv::Point3f acc(
-                        -imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                        -imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                        -imuBuf_.front()->linear_acceleration.z * fator_escala_acc
+                        imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
+                        imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
+                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc
                     );
                     cv::Point3f gyr(
                         imuBuf_.front()->angular_velocity.x, 
