@@ -169,7 +169,9 @@ void MonoInertialNode::SyncWithImu_Track()
                 float fator_escala = 9.81f / 9.8425f;
 
                 cv::Point3f acc(acc_x_corrigido * fator_escala, acc_y_corrigido * fator_escala, acc_z_corrigido * fator_escala);
-                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x - (-0.044f),
+                    imuBuf_.front()->angular_velocity.y - (0.023f),
+                    imuBuf_.front()->angular_velocity.z - (0.024f));
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
                 tLastImuInPacket = t;
@@ -193,7 +195,9 @@ void MonoInertialNode::SyncWithImu_Track()
                 float fator_escala = 9.81f / 9.8425f;
 
                 cv::Point3f acc(acc_x_corrigido * fator_escala, acc_y_corrigido * fator_escala, acc_z_corrigido * fator_escala);
-                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
+                cv::Point3f gyr(imuBuf_.front()->angular_velocity.x - (-0.044f),
+                    imuBuf_.front()->angular_velocity.y - (0.023f),
+                    imuBuf_.front()->angular_velocity.z - (0.024f));
 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
             }
