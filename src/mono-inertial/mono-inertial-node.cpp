@@ -122,7 +122,7 @@ void MonoInertialNode::SyncWithImu_Track()
             }
             img_msg_ponteiro = imgBuf_.front();
             // Aplica o timeshift do Kalibr no timestamp da imagem para alinhar com a linha do tempo da IMU
-            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp) + kalibr_timeshift;
+            tImg = Utility::StampToSec(img_msg_ponteiro->header.stamp) + kalibr_timeshift/2;
         }
 
         vector<ORB_SLAM3::IMU::Point> vImuMeas;
@@ -160,16 +160,19 @@ void MonoInertialNode::SyncWithImu_Track()
                     t = tLastImuInPacket + 0.005; 
                 }
 
-                // RESTAURADO: Coleta dos dados dinâmicos reais vindos da ESP32
+                // 1. Remova o bias estático medido no eixo Z e X
+                float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
+                float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
+                float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f); // Remove o offset de -1.09
+
+                // 2. Ajuste fino de escala para garantir que parado dê exatamente 9.81 m/s²
+                // (Magnitude média medida foi ~9.8425)
+                float fator_escala = 9.81f / 9.8425f;
+
                 cv::Point3f acc(
-                    imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                    imuBuf_.front()->linear_acceleration.z * fator_escala_acc 
-                );
-                cv::Point3f gyr(
-                    imuBuf_.front()->angular_velocity.x, 
-                    imuBuf_.front()->angular_velocity.y, 
-                    imuBuf_.front()->angular_velocity.z
+                    acc_x_corrigido * fator_escala,
+                    acc_y_corrigido * fator_escala,
+                    acc_z_corrigido * fator_escala
                 );
                 
                 vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
@@ -189,15 +192,19 @@ void MonoInertialNode::SyncWithImu_Track()
                 if (tLastImuInPacket >= 0.0 && t <= tLastImuInPacket) t = tLastImuInPacket + 0.005;
 
                 if (t > tImg) {
+                    // 1. Remova o bias estático medido no eixo Z e X
+                    float acc_x_corrigido = imuBuf_.front()->linear_acceleration.x - 0.3076f;
+                    float acc_y_corrigido = imuBuf_.front()->linear_acceleration.y - 0.3770f;
+                    float acc_z_corrigido = imuBuf_.front()->linear_acceleration.z - (-1.0989f); // Remove o offset de -1.09
+
+                    // 2. Ajuste fino de escala para garantir que parado dê exatamente 9.81 m/s²
+                    // (Magnitude média medida foi ~9.8425)
+                    float fator_escala = 9.81f / 9.8425f;
+
                     cv::Point3f acc(
-                        imuBuf_.front()->linear_acceleration.x * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.y * fator_escala_acc, 
-                        imuBuf_.front()->linear_acceleration.z * fator_escala_acc
-                    );
-                    cv::Point3f gyr(
-                        imuBuf_.front()->angular_velocity.x, 
-                        imuBuf_.front()->angular_velocity.y, 
-                        imuBuf_.front()->angular_velocity.z
+                        acc_x_corrigido * fator_escala,
+                        acc_y_corrigido * fator_escala,
+                        acc_z_corrigido * fator_escala
                     );
 
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
