@@ -256,7 +256,7 @@ void MonoInertialNode::SyncWithImu_Track()
             try {
                 // Substitua pelo método que seu nó usa para obter o caminho do arquivo .yaml (ex: strSettingsFile ou via parâmetro ROS)
                 // Se a variável com o caminho do arquivo no seu nó se chamar diferente, ajuste aqui:
-                std::string caminho_yaml = argv[2]; // Geralmente o segundo argumento passado no escopo ou lido via parameter
+                std::string caminho_yaml = "src/orbslam3_ros2/config/marmitron/marmitron_inicial.yaml"; // Geralmente o segundo argumento passado no escopo ou lido via parameter
 
                 cv::FileStorage fSettings(caminho_yaml, cv::FileStorage::READ);
                 if (fSettings.isOpened()) {
