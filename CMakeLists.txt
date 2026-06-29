@@ -71,7 +71,13 @@ add_executable(mono-inertial
 )
 ament_target_dependencies(mono-inertial rclcpp sensor_msgs geometry_msgs tf2 tf2_ros tf2_msgs cv_bridge ORB_SLAM3 Pangolin)
 
-install(TARGETS  mono mono-inertial
+add_executable(mono-inertial-chat
+  src/chat/mono-inertial-chat.cpp
+  src/chat/mono-inertial-node-chat.cpp
+)
+ament_target_dependencies(mono-inertial-chat rclcpp sensor_msgs geometry_msgs tf2 tf2_ros tf2_msgs cv_bridge ORB_SLAM3 Pangolin)
+
+install(TARGETS  mono mono-inertial mono-inertial-chat
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files. mono rgbd stereo stereo-inertial
