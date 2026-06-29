@@ -30,7 +30,7 @@ MonoInertialNode::MonoInertialNode()
     image_topic_ =
         this->declare_parameter<std::string>(
             "image_topic",
-            "/camera/image_raw");
+            "/image_raw");
 
     imu_topic_ =
         this->declare_parameter<std::string>(
