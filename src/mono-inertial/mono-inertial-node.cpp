@@ -100,16 +100,17 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 }
 
 
-//Solução ChatGPT4
 void MonoInertialNode::SyncWithImu_Track()
 {
+    double lastProcessedImgTime = -1.0;
+
     while (rclcpp::ok())
     {
         ImageMsg::SharedPtr img;
 
-        // =========================
-        // 1. GET IMAGE (NO TIME MOD)
-        // =========================
+        // ==========================================
+        // 1. ESPERA E OBTÉM A IMAGEM (SEM POP AINDA)
+        // ==========================================
         {
             std::unique_lock<std::mutex> lock(bufImgMutex_);
 
@@ -120,72 +121,95 @@ void MonoInertialNode::SyncWithImu_Track()
             }
 
             img = imgBuf_.front();
-            imgBuf_.pop();
         }
 
         double tImg = Utility::StampToSec(img->header.stamp);
 
-        // =========================
-        // 2. COLLECT IMU UNTIL IMAGE TIME
-        // =========================
+        // ==========================================
+        // 2. VERIFICA SE A IMU JÁ ALCANÇOU A IMAGEM
+        // ==========================================
+        {
+            std::unique_lock<std::mutex> lock(bufImuMutex_);
+
+            // Se o buffer da IMU estiver muito vazio ou o último dado da IMU 
+            // for mais velho que a imagem, esperamos a IMU chegar.
+            if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue; 
+            }
+        }
+
+        // Agora que temos certeza que a IMU cobriu o tempo da imagem, 
+        // removemos a imagem do buffer com segurança.
+        {
+            std::unique_lock<std::mutex> lock(bufImgMutex_);
+            imgBuf_.pop();
+        }
+
+        // ==========================================
+        // 3. COLA OS DADOS DA IMU ATÉ O INSTANTE DA IMAGEM
+        // ==========================================
         std::vector<ORB_SLAM3::IMU::Point> imuData;
 
         {
             std::unique_lock<std::mutex> lock(bufImuMutex_);
-
-            if (imuBuf_.size() < 2) {
-                continue;
-            }
-
-            double lastImgTime = tImg;
 
             while (!imuBuf_.empty())
             {
                 auto imu = imuBuf_.front();
                 double t = Utility::StampToSec(imu->header.stamp);
 
-                if (t > lastImgTime)
-                    break;
+                cv::Point3f acc(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
+                cv::Point3f gyr(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z);
 
-                cv::Point3f acc(
-                    imu->linear_acceleration.x,
-                    imu->linear_acceleration.y,
-                    imu->linear_acceleration.z);
-
-                cv::Point3f gyr(
-                    imu->angular_velocity.x,
-                    imu->angular_velocity.y,
-                    imu->angular_velocity.z);
-
+                // IMPORTANTE: Adiciona o ponto atual no vetor
                 imuData.emplace_back(acc, gyr, t);
-
                 imuBuf_.pop();
+
+                // Regra do ORB-SLAM3: Precisamos de pelo menos UM ponto cujo 
+                // tempo seja maior (futuro) que o tempo da imagem para interpolar.
+                if (t > tImg) {
+                    break; 
+                }
             }
         }
 
-        // =========================
-        // 3. VALIDATE (VERY IMPORTANT)
-        // =========================
-        if (imuData.size() < 2)
+        // ==========================================
+        // 4. VALIDAÇÃO E FILTRAGEM DE REPETIÇÃO
+        // ==========================================
+        if (imuData.size() < 2) {
             continue;
-
-        // check dt consistency
-        for (size_t i = 1; i < imuData.size(); i++)
-        {
-            double dt = imuData[i].t - imuData[i - 1].t;
-
-            if (!std::isfinite(dt) || dt <= 0.0)
-            {
-                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED");
-                return;
-            }
         }
 
-        // =========================
-        // 4. RUN SLAM
-        // =========================
+        // Garante monotonicidade temporal estrita para o ORB-SLAM3
+        if (lastProcessedImgTime > 0.0 && tImg <= lastProcessedImgTime) {
+            continue;
+        }
+
+        // Verifica consistência do DT
+        bool bad_dt = false;
+        for (size_t i = 1; i < imuData.size(); i++) {
+            double dt = imuData[i].t - imuData[i - 1].t;
+            if (!std::isfinite(dt) || dt <= 0.0) {
+                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED: %f", dt);
+                bad_dt = true;
+                break;
+            }
+        }
+        if (bad_dt) continue;
+
+        // ==========================================
+        // 5. ENVIA PARA O SLAM
+        // ==========================================
+        cv::Mat cvImage = GetImage(img);
+        if (cvImage.empty()) {
+            continue;
+        }
+
         try {
-            m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
+            m_SLAM->TrackMonocular(cvImage, tImg, imuData);
+            lastProcessedImgTime = tImg;
         }
         catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
