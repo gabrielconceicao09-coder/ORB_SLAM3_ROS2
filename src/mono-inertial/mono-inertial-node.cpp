@@ -99,7 +99,101 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
     }
 }
 
-//Solução Gemini:
+
+//Solução ChatGPT4
+void MonoInertialNode::SyncWithImu_Track()
+{
+    while (rclcpp::ok())
+    {
+        ImageMsg::SharedPtr img;
+
+        // =========================
+        // 1. GET IMAGE (NO TIME MOD)
+        // =========================
+        {
+            std::unique_lock<std::mutex> lock(bufImgMutex_);
+
+            if (imgBuf_.empty()) {
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue;
+            }
+
+            img = imgBuf_.front();
+            imgBuf_.pop();
+        }
+
+        double tImg = Utility::StampToSec(img->header.stamp);
+
+        // =========================
+        // 2. COLLECT IMU UNTIL IMAGE TIME
+        // =========================
+        std::vector<ORB_SLAM3::IMU::Point> imuData;
+
+        {
+            std::unique_lock<std::mutex> lock(bufImuMutex_);
+
+            if (imuBuf_.size() < 2) {
+                continue;
+            }
+
+            double lastImgTime = tImg;
+
+            while (!imuBuf_.empty())
+            {
+                auto imu = imuBuf_.front();
+                double t = Utility::StampToSec(imu->header.stamp);
+
+                if (t > lastImgTime)
+                    break;
+
+                cv::Point3f acc(
+                    imu->linear_acceleration.x,
+                    imu->linear_acceleration.y,
+                    imu->linear_acceleration.z);
+
+                cv::Point3f gyr(
+                    imu->angular_velocity.x,
+                    imu->angular_velocity.y,
+                    imu->angular_velocity.z);
+
+                imuData.emplace_back(acc, gyr, t);
+
+                imuBuf_.pop();
+            }
+        }
+
+        // =========================
+        // 3. VALIDATE (VERY IMPORTANT)
+        // =========================
+        if (imuData.size() < 2)
+            continue;
+
+        // check dt consistency
+        for (size_t i = 1; i < imuData.size(); i++)
+        {
+            double dt = imuData[i].t - imuData[i - 1].t;
+
+            if (!std::isfinite(dt) || dt <= 0.0)
+            {
+                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED");
+                return;
+            }
+        }
+
+        // =========================
+        // 4. RUN SLAM
+        // =========================
+        try {
+            m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
+        }
+        catch (const std::exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
+        }
+    }
+}
+
+/*//Solução Gemini:
 void MonoInertialNode::SyncWithImu_Track()
 {
     double lastProcessedImgTime = -1.0;
@@ -201,100 +295,6 @@ void MonoInertialNode::SyncWithImu_Track()
         try {
             m_SLAM->TrackMonocular(cvImage, tImg, imuData);
             lastProcessedImgTime = tImg;
-        }
-        catch (const std::exception &e) {
-            RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
-        }
-    }
-}
-
-
-/*//Solução ChatGPT4
-void MonoInertialNode::SyncWithImu_Track()
-{
-    while (rclcpp::ok())
-    {
-        ImageMsg::SharedPtr img;
-
-        // =========================
-        // 1. GET IMAGE (NO TIME MOD)
-        // =========================
-        {
-            std::unique_lock<std::mutex> lock(bufImgMutex_);
-
-            if (imgBuf_.empty()) {
-                lock.unlock();
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue;
-            }
-
-            img = imgBuf_.front();
-            imgBuf_.pop();
-        }
-
-        double tImg = Utility::StampToSec(img->header.stamp);
-
-        // =========================
-        // 2. COLLECT IMU UNTIL IMAGE TIME
-        // =========================
-        std::vector<ORB_SLAM3::IMU::Point> imuData;
-
-        {
-            std::unique_lock<std::mutex> lock(bufImuMutex_);
-
-            if (imuBuf_.size() < 2) {
-                continue;
-            }
-
-            double lastImgTime = tImg;
-
-            while (!imuBuf_.empty())
-            {
-                auto imu = imuBuf_.front();
-                double t = Utility::StampToSec(imu->header.stamp);
-
-                if (t > lastImgTime)
-                    break;
-
-                cv::Point3f acc(
-                    imu->linear_acceleration.x,
-                    imu->linear_acceleration.y,
-                    imu->linear_acceleration.z);
-
-                cv::Point3f gyr(
-                    imu->angular_velocity.x,
-                    imu->angular_velocity.y,
-                    imu->angular_velocity.z);
-
-                imuData.emplace_back(acc, gyr, t);
-
-                imuBuf_.pop();
-            }
-        }
-
-        // =========================
-        // 3. VALIDATE (VERY IMPORTANT)
-        // =========================
-        if (imuData.size() < 2)
-            continue;
-
-        // check dt consistency
-        for (size_t i = 1; i < imuData.size(); i++)
-        {
-            double dt = imuData[i].t - imuData[i - 1].t;
-
-            if (!std::isfinite(dt) || dt <= 0.0)
-            {
-                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED");
-                return;
-            }
-        }
-
-        // =========================
-        // 4. RUN SLAM
-        // =========================
-        try {
-            m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
         }
         catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
