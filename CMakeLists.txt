@@ -64,12 +64,13 @@ add_executable(stereo-inertial
   src/stereo-inertial/stereo-inertial-node.cpp
 )
 ament_target_dependencies(stereo-inertial rclcpp sensor_msgs cv_bridge ORB_SLAM3 Pangolin)
-endif()
+
 add_executable(mono-inertial
   src/mono-inertial/mono-inertial.cpp
   src/mono-inertial/mono-inertial-node.cpp
 )
 ament_target_dependencies(mono-inertial rclcpp sensor_msgs geometry_msgs tf2 tf2_ros tf2_msgs cv_bridge ORB_SLAM3 Pangolin)
+endif()
 
 add_executable(mono-inertial-chat
   src/chat/mono-inertial-chat.cpp
@@ -77,7 +78,7 @@ add_executable(mono-inertial-chat
 )
 ament_target_dependencies(mono-inertial-chat rclcpp sensor_msgs geometry_msgs tf2 tf2_ros tf2_msgs cv_bridge ORB_SLAM3 Pangolin)
 
-install(TARGETS  mono mono-inertial mono-inertial-chat
+install(TARGETS  mono mono-inertial-chat
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files. mono rgbd stereo stereo-inertial
