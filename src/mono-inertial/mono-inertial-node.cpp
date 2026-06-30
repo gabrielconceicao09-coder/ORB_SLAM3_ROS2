@@ -58,7 +58,7 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
         RCLCPP_WARN(this->get_logger(), "IMU descartada: valores NaN ou inf");
         return;
     }
-    imuBuf_.push(msg);
+    imuBuf_.push_back(msg);
     bufImuMutex_.unlock();
     //RCLCPP_INFO(this->get_logger(), "Mensagem IMU recebida");
 }
