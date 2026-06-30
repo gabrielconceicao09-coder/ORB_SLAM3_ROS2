@@ -121,7 +121,7 @@ void MonoInertialNode::SyncWithImu_Track()
         double tImg = Utility::StampToSec(img->header.stamp);
 
         // =========================
-        // 2. COLLECT IMU WITH BOUNDARY CHECK (CORRIGIDO)
+        // 2. COLLECT IMU WITH BOUNDARY CHECK (CORREÇÃO DE VETOR VAZIO)
         // =========================
         std::vector<ORB_SLAM3::IMU::Point> imuData;
         bool imu_ready = false;
@@ -129,13 +129,13 @@ void MonoInertialNode::SyncWithImu_Track()
         {
             std::unique_lock<std::mutex> lock(bufImuMutex_);
 
-            if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
+            // 1. Garante que temos dados suficientes no buffer geral para tomar uma decisão
+            if (imuBuf_.size() < 2 || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue; 
             }
 
-            // Usamos iteradores para varrer o deque de forma segura
             auto it = imuBuf_.begin();
             auto it_erase_end = imuBuf_.begin();
 
@@ -149,20 +149,32 @@ void MonoInertialNode::SyncWithImu_Track()
 
                 imuData.emplace_back(acc, gyr, t);
 
-                if (t >= tImg) {
-                    // O iterador de apagar deve ir ATÉ o elemento anterior a este.
-                    // Na função erase(comço, fim), o elemento 'fim' NÃO é incluído na remoção.
-                    // Portanto, o elemento atual (t >= tImg) será preservado no buffer!
+                // IMPORTANTE: Garantimos que coletamos dados até ultrapassar o frame (t > tImg)
+                // E também garantimos que coletamos ao menos 2 pontos para não gerar vetor incompleto.
+                if (t >= tImg && imuData.size() >= 2) {
                     it_erase_end = it; 
                     imu_ready = true;
                     break;
                 }
             }
 
-            // Apaga eficientemente todos os elementos antigos em lote
-            if (imu_ready && it_erase_end != imuBuf_.begin()) {
+            // Se coletamos tudo e mesmo assim não achamos um ponto >= tImg, 
+            // significa que a IMU ainda está ligeiramente atrasada no tempo físico.
+            if (!imu_ready) {
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue;
+            }
+
+            // Apaga os elementos antigos que ficaram para trás do ponto de corte
+            if (it_erase_end != imuBuf_.begin()) {
                 imuBuf_.erase(imuBuf_.begin(), it_erase_end);
             }
+        }
+
+        // Se falhar nessa validação física de tamanho, preservamos a imagem e tentamos no próximo ciclo
+        if (imuData.size() < 2) {
+            continue;
         }
 
         // =========================
