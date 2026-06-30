@@ -53,7 +53,7 @@ private:
     std::mutex bufImuMutex_;
 
     //Image buffer pointer
-    deque<ImageMsg::SharedPtr> imgBuf_; 
+    queue<ImageMsg::SharedPtr> imgBuf_; 
     std::mutex bufImgMutex_;
 
     //Tracked transform buffer pointer and listened transform buffer

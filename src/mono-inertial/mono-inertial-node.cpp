@@ -121,7 +121,7 @@ void MonoInertialNode::SyncWithImu_Track()
         double tImg = Utility::StampToSec(img->header.stamp);
 
         // =========================
-        // 2. COLLECT IMU WITH BOUNDARY CHECK
+        // 2. COLLECT IMU WITH BOUNDARY CHECK (CORRIGIDO)
         // =========================
         std::vector<ORB_SLAM3::IMU::Point> imuData;
         bool imu_ready = false;
@@ -129,21 +129,19 @@ void MonoInertialNode::SyncWithImu_Track()
         {
             std::unique_lock<std::mutex> lock(bufImuMutex_);
 
-            // Condição Crítica: Precisamos garantir que o buffer da IMU já cobriu 
-            // e ultrapassou o tempo do frame da câmera atual (tImg).
             if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
-                // Os dados da IMU para este frame ainda não chegaram via serial.
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue; 
             }
 
-            // Agora que sabemos que a IMU passou de tImg, vamos coletar os dados
-            size_t num_processed = 0;
-            
-            for (size_t i = 0; i < imuBuf_.size(); i++)
+            // Usamos iteradores para varrer o deque de forma segura
+            auto it = imuBuf_.begin();
+            auto it_erase_end = imuBuf_.begin();
+
+            for (; it != imuBuf_.end(); ++it)
             {
-                auto imu = imuBuf_[i];
+                auto imu = *it;
                 double t = Utility::StampToSec(imu->header.stamp);
 
                 cv::Point3f acc(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
@@ -151,32 +149,20 @@ void MonoInertialNode::SyncWithImu_Track()
 
                 imuData.emplace_back(acc, gyr, t);
 
-                // IMPORTANTE: Coletamos até encontrar o primeiro ponto DEPOIS de tImg.
-                // Esse ponto posterior é vital para a interpolação interna do ORB-SLAM3.
                 if (t >= tImg) {
-                    num_processed = i; // Guarda até onde precisamos limpar o buffer
+                    // O iterador de apagar deve ir ATÉ o elemento anterior a este.
+                    // Na função erase(comço, fim), o elemento 'fim' NÃO é incluído na remoção.
+                    // Portanto, o elemento atual (t >= tImg) será preservado no buffer!
+                    it_erase_end = it; 
                     imu_ready = true;
                     break;
                 }
             }
 
-            // Descarta do buffer principal apenas os dados antigos que não serão mais 
-            // usados por nenhum frame futuro. Deixamos o ponto 't >= tImg' no buffer, 
-            // pois ele será o ponto inicial do próximo frame!
-            for (size_t i = 0; i < num_processed; i++) {
-                imuBuf_.pop_front(); // Nota: Certifique-se que imuBuf_ seja um std::deque
+            // Apaga eficientemente todos os elementos antigos em lote
+            if (imu_ready && it_erase_end != imuBuf_.begin()) {
+                imuBuf_.erase(imuBuf_.begin(), it_erase_end);
             }
-        }
-
-        // Se por algum motivo de concorrência não pegamos o ponto posterior, pula o frame
-        if (!imu_ready || imuData.size() < 2) {
-            continue;
-        }
-
-        // Remove a imagem do buffer original apenas após o sucesso da sincronização da IMU
-        {
-            std::unique_lock<std::mutex> lock(bufImgMutex_);
-            imgBuf_.pop();
         }
 
         // =========================
