@@ -49,11 +49,11 @@ private:
     std::thread *syncThread_; //inicia thread para sincronizar
 
     //IMU buffer pointer
-    queue<ImuMsg::SharedPtr> imuBuf_;
+    deque<ImuMsg::SharedPtr> imuBuf_;
     std::mutex bufImuMutex_;
 
     //Image buffer pointer
-    queue<ImageMsg::SharedPtr> imgBuf_; 
+    deque<ImageMsg::SharedPtr> imgBuf_; 
     std::mutex bufImgMutex_;
 
     //Tracked transform buffer pointer and listened transform buffer

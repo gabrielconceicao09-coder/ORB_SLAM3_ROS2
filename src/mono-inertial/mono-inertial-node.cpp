@@ -99,7 +99,6 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
     }
 }
 
-//Solução que se perde rápido por inicialização do imu
 void MonoInertialNode::SyncWithImu_Track()
 {
     while (rclcpp::ok())
@@ -107,78 +106,94 @@ void MonoInertialNode::SyncWithImu_Track()
         ImageMsg::SharedPtr img;
 
         // =========================
-        // 1. GET IMAGE (NO TIME MOD)
+        // 1. GET IMAGE
         // =========================
         {
             std::unique_lock<std::mutex> lock(bufImgMutex_);
-
             if (imgBuf_.empty()) {
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
-
             img = imgBuf_.front();
-            imgBuf_.pop();
         }
 
         double tImg = Utility::StampToSec(img->header.stamp);
 
         // =========================
-        // 2. COLLECT IMU UNTIL IMAGE TIME
+        // 2. COLLECT IMU WITH BOUNDARY CHECK
         // =========================
         std::vector<ORB_SLAM3::IMU::Point> imuData;
+        bool imu_ready = false;
 
         {
             std::unique_lock<std::mutex> lock(bufImuMutex_);
 
-            if (imuBuf_.size() < 2) {
-                continue;
+            // Condição Crítica: Precisamos garantir que o buffer da IMU já cobriu 
+            // e ultrapassou o tempo do frame da câmera atual (tImg).
+            if (imuBuf_.empty() || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
+                // Os dados da IMU para este frame ainda não chegaram via serial.
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue; 
             }
 
-            double lastImgTime = tImg;
-
-            while (!imuBuf_.empty())
+            // Agora que sabemos que a IMU passou de tImg, vamos coletar os dados
+            size_t num_processed = 0;
+            
+            for (size_t i = 0; i < imuBuf_.size(); i++)
             {
-                auto imu = imuBuf_.front();
+                auto imu = imuBuf_[i];
                 double t = Utility::StampToSec(imu->header.stamp);
 
-                if (t > lastImgTime)
-                    break;
-
-                cv::Point3f acc(
-                    imu->linear_acceleration.x,
-                    imu->linear_acceleration.y,
-                    imu->linear_acceleration.z);
-
-                cv::Point3f gyr(
-                    imu->angular_velocity.x,
-                    imu->angular_velocity.y,
-                    imu->angular_velocity.z);
+                cv::Point3f acc(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
+                cv::Point3f gyr(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z);
 
                 imuData.emplace_back(acc, gyr, t);
 
-                imuBuf_.pop();
+                // IMPORTANTE: Coletamos até encontrar o primeiro ponto DEPOIS de tImg.
+                // Esse ponto posterior é vital para a interpolação interna do ORB-SLAM3.
+                if (t >= tImg) {
+                    num_processed = i; // Guarda até onde precisamos limpar o buffer
+                    imu_ready = true;
+                    break;
+                }
+            }
+
+            // Descarta do buffer principal apenas os dados antigos que não serão mais 
+            // usados por nenhum frame futuro. Deixamos o ponto 't >= tImg' no buffer, 
+            // pois ele será o ponto inicial do próximo frame!
+            for (size_t i = 0; i < num_processed; i++) {
+                imuBuf_.pop_front(); // Nota: Certifique-se que imuBuf_ seja um std::deque
             }
         }
 
-        // =========================
-        // 3. VALIDATE (VERY IMPORTANT)
-        // =========================
-        if (imuData.size() < 2)
+        // Se por algum motivo de concorrência não pegamos o ponto posterior, pula o frame
+        if (!imu_ready || imuData.size() < 2) {
             continue;
+        }
 
-        // check dt consistency
+        // Remove a imagem do buffer original apenas após o sucesso da sincronização da IMU
+        {
+            std::unique_lock<std::mutex> lock(bufImgMutex_);
+            imgBuf_.pop();
+        }
+
+        // =========================
+        // 3. VALIDATE DT CONSISTENCY
+        // =========================
+        bool dt_ok = true;
         for (size_t i = 1; i < imuData.size(); i++)
         {
             double dt = imuData[i].t - imuData[i - 1].t;
-
             if (!std::isfinite(dt) || dt <= 0.0)
             {
-                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED");
-                return;
+                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED: %f", dt);
+                dt_ok = false;
+                break;
             }
         }
+        if (!dt_ok) continue;
 
         // =========================
         // 4. RUN SLAM
@@ -192,114 +207,6 @@ void MonoInertialNode::SyncWithImu_Track()
     }
 }
 
-/*//Solução Gemini:
-void MonoInertialNode::SyncWithImu_Track()
-{
-    double lastProcessedImgTime = -1.0;
-    int warning_counter = 0;
-
-    while (rclcpp::ok())
-    {
-        ImageMsg::SharedPtr imgMsg;
-
-        // 1. GET IMAGE
-        {
-            std::unique_lock<std::mutex> lock(bufImgMutex_);
-            if (imgBuf_.empty()) {
-                lock.unlock();
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue;
-            }
-            imgMsg = imgBuf_.front();
-        }
-
-        double tImg = Utility::StampToSec(imgMsg->header.stamp);
-
-        // 2. CHECK IMU BUFFER AND DIAGNOSTIC
-        {
-            std::unique_lock<std::mutex> lock(bufImuMutex_);
-
-            if (imuBuf_.empty()) {
-                lock.unlock();
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue;
-            }
-
-            double tLastImu = Utility::StampToSec(imuBuf_.back()->header.stamp);
-            double tFirstImu = Utility::StampToSec(imuBuf_.front()->header.stamp);
-
-            // Se o último dado da IMU ainda é mais velho que a imagem, precisamos esperar.
-            // Mas se a IMU estiver MUITO atrás (ex: mais de 1 segundo), há um erro de sincronização geral.
-            if (tLastImu < tImg) {
-                warning_counter++;
-                if (warning_counter % 100 == 0) {
-                    RCLCPP_WARN(this->get_logger(), 
-                        "IMU esta ATRASADA em relacao a Imagem! [tImg: %.4f | Ultima IMU: %.4f | Diferenca: %.4f s]", 
-                        tImg, tLastImu, tImg - tLastImu);
-                }
-                lock.unlock();
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue;
-            }
-        }
-
-        // Remove a imagem do buffer pois a IMU já a alcançou temporalmente
-        {
-            std::unique_lock<std::mutex> lock(bufImgMutex_);
-            imgBuf_.pop();
-        }
-
-        // 3. COLLECT IMU DATA
-        std::vector<ORB_SLAM3::IMU::Point> imuData;
-
-        {
-            std::unique_lock<std::mutex> lock(bufImuMutex_);
-
-            while (!imuBuf_.empty())
-            {
-                auto imuMsg = imuBuf_.front();
-                double tImu = Utility::StampToSec(imuMsg->header.stamp);
-
-                cv::Point3f acc(imuMsg->linear_acceleration.x, imuMsg->linear_acceleration.y, imuMsg->linear_acceleration.z);
-                cv::Point3f gyr(imuMsg->angular_velocity.x, imuMsg->angular_velocity.y, imuMsg->angular_velocity.z);
-                
-                // IMPORTANTE: Adiciona o ponto antes de checar o limite superior
-                imuData.emplace_back(acc, gyr, tImu);
-                imuBuf_.pop();
-
-                // Se já passamos do tempo da imagem, coletamos o suficiente para este frame
-                if (tImu > tImg) {
-                    break;
-                }
-            }
-        }
-
-        // 4. VALIDATE
-        if (imuData.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Vetor de IMU vazio gerado no wrapper!");
-            continue;
-        }
-
-        // Evita que o ORB-SLAM3 estoure por falta de monotonicidade temporal das imagens
-        if (lastProcessedImgTime > 0.0 && tImg <= lastProcessedImgTime) {
-            continue;
-        }
-
-        // 5. RUN SLAM
-        cv::Mat cvImage = GetImage(imgMsg);
-        if (cvImage.empty()) {
-            continue;
-        }
-
-        try {
-            m_SLAM->TrackMonocular(cvImage, tImg, imuData);
-            lastProcessedImgTime = tImg;
-        }
-        catch (const std::exception &e) {
-            RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
-        }
-    }
-}*/
 /*
             /*Sophus::SE3f Tmc = Tcm.inverse(); //Transformação mapa => camera 
             TfMsg transf_msg;
