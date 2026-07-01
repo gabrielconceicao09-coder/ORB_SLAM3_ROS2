@@ -255,6 +255,7 @@ void MonoInertialNode::SyncWithImu_Track()
             continue;
 
         RCLCPP_INFO(this->get_logger(), "dt Frames: %.9f", (tImg-tLastImg));
+        RCLCPP_INFO(this->get_logger(), "dt Frame Menos Última IMU: %.9f", (tImg-imuData.back().t));
         //----------------------------------------
         // 5. TRACK
         //----------------------------------------
