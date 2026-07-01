@@ -132,7 +132,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // 1. Garante que temos dados suficientes no buffer geral para tomar uma decisão
             if (imuBuf_.size() < 2 || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
                 lock.unlock();
-                RCLCPP_INFO(this->get_logger, "imuBuf_.back é mais velha que frame: tImg: %d, timuBuf_: %d", tImg, Utility::StampToSec(imuBuf_.back()->header.stamp));
+                RCLCPP_INFO(this->get_logger(), "imuBuf_.back é mais velha que frame: tImg: %d, timuBuf_: %d", tImg, Utility::StampToSec(imuBuf_.back()->header.stamp));
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue; 
             }
