@@ -100,7 +100,8 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 }
 
 void MonoInertialNode::SyncWithImu_Track()
-{
+{   
+    double tLastImg;
     while (rclcpp::ok())
     {
         ImageMsg::SharedPtr img;
@@ -202,8 +203,9 @@ void MonoInertialNode::SyncWithImu_Track()
         // 4. RUN SLAM
         // =========================
         try {
-            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%zu pontos): tImg: %.9f, timufront: %.9f, timuback: %.9f", tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
+            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%zu pontos): tLastImg: %.9f, tImg: %.9f \ntimufront: %.9f, timuback: %.9f", tLastImg, tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
             m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
+            tLastImg = tImg;
         }
         catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
