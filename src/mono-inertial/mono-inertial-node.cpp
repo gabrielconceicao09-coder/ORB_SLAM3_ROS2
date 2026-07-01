@@ -153,8 +153,8 @@ void MonoInertialNode::SyncWithImu_Track()
 
                 // IMPORTANTE: Garantimos que coletamos dados até ultrapassar o frame (t > tImg)
                 // E também garantimos que coletamos ao menos 2 pontos para não gerar vetor incompleto.
-                if (t >= tImg && imuData.size() >= 2) {
-                    RCLCPP_INFO(this->get_logger(), "imuData montado até t>=tImg");
+                if (t >= tImg && imuData.size() >= 5) {
+                    RCLCPP_INFO(this->get_logger(), "imuData montado até t>=tImg, %i pontos", imuData.size());
                     it_erase_end = it; 
                     imu_ready = true;
                     break;
@@ -178,7 +178,7 @@ void MonoInertialNode::SyncWithImu_Track()
         }
 
         // Se falhar nessa validação física de tamanho, preservamos a imagem e tentamos no próximo ciclo
-        if (imuData.size() < 2) {
+        if (imuData.size() < 5) {
             RCLCPP_INFO(this->get_logger(), "imuData muito pequeno: %i", imuData.size());
             continue;
         }
