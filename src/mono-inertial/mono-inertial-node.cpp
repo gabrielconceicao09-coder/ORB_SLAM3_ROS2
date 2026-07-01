@@ -132,7 +132,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // 1. Garante que temos dados suficientes no buffer geral para tomar uma decisão
             if (imuBuf_.size() < 2 || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
                 lock.unlock();
-                RCLCPP_INFO(this->get_logger(), "imuBuf_.back é mais velha que frame: tImg: %d, timuBuf_: %d", tImg, Utility::StampToSec(imuBuf_.back()->header.stamp));
+                RCLCPP_INFO(this->get_logger(), "imuBuf_.back é mais velha que frame: tImg: %.9f, timuBuf_: %.9f", tImg, Utility::StampToSec(imuBuf_.back()->header.stamp));
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue; 
             }
@@ -201,7 +201,7 @@ void MonoInertialNode::SyncWithImu_Track()
         // 4. RUN SLAM
         // =========================
         try {
-            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%i pontos): tImg: %d, timufront: %d, timuback: %d", tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
+            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%zu pontos): tImg: %.9f, timufront: %.9f, timuback: %.9f", tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
             m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
         }
         catch (const std::exception &e) {
