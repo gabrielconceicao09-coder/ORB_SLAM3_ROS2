@@ -198,6 +198,14 @@ void MonoInertialNode::SyncWithImu_Track()
             }
         }
         if (!dt_ok) continue;
+        
+        //Retira a imagem do buffer, já que passaram todas checagens
+        {
+            std::unique_lock<std::mutex> lock(bufImgMutex_);
+            if (!imgBuf_.empty()) {
+                imgBuf_.pop();
+            }
+        }
 
         // =========================
         // 4. RUN SLAM
