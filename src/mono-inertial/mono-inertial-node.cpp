@@ -58,7 +58,7 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
         RCLCPP_WARN(this->get_logger(), "IMU descartada: valores NaN ou inf");
         return;
     }
-    imuBuf_.push(msg);
+    imuBuf_.push_back(msg);
     bufImuMutex_.unlock();
     //RCLCPP_INFO(this->get_logger(), "Mensagem IMU recebida");
 }
@@ -68,7 +68,7 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
     //RCLCPP_INFO(this->get_logger(), "GrabImage chamada");
     //msg->header.stamp = this->get_clock()->now();
     bufImgMutex_.lock();
-    imgBuf_.push_back(msg);
+    imgBuf_.push(msg);
     bufImgMutex_.unlock();
     //RCLCPP_INFO(this->get_logger(), "Mensagem câmera recebida");
 }
