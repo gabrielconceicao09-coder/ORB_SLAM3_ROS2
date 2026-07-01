@@ -203,7 +203,7 @@ void MonoInertialNode::SyncWithImu_Track()
         // 4. RUN SLAM
         // =========================
         try {
-            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%zu pontos): tLastImg: %.9f, tImg: %.9f \ntimufront: %.9f, timuback: %.9f", tLastImg, tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
+            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%zu pontos): tLastImg: %.9f, tImg: %.9f \ntimufront: %.9f, timuback: %.9f", imuData.size(), tLastImg, tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
             m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
             tLastImg = tImg;
         }
