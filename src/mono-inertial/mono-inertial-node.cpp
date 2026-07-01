@@ -100,123 +100,141 @@ cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
 }
 
 void MonoInertialNode::SyncWithImu_Track()
-{   
-    double tLastImg;
+{
+    double tLastImg = -1.0;
+
     while (rclcpp::ok())
     {
         ImageMsg::SharedPtr img;
 
-        // =========================
+        //--------------------------
         // 1. GET IMAGE
-        // =========================
+        //--------------------------
         {
             std::unique_lock<std::mutex> lock(bufImgMutex_);
-            if (imgBuf_.empty()) {
+
+            if (imgBuf_.empty())
+            {
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
+
             img = imgBuf_.front();
+            imgBuf_.pop();
         }
 
-        double tImg = Utility::StampToSec(img->header.stamp);
+        const double tImg = Utility::StampToSec(img->header.stamp);
 
-        // =========================
-        // 2. COLLECT IMU WITH BOUNDARY CHECK (CORREÇÃO DE VETOR VAZIO)
-        // =========================
+        // Primeiro frame: apenas memoriza o tempo
+        if (tLastImg < 0.0)
+        {
+            tLastImg = tImg;
+            continue;
+        }
+
         std::vector<ORB_SLAM3::IMU::Point> imuData;
-        bool imu_ready = false;
 
         {
             std::unique_lock<std::mutex> lock(bufImuMutex_);
 
-            // 1. Garante que temos dados suficientes no buffer geral para tomar uma decisão
-            if (imuBuf_.size() < 2 || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
-                lock.unlock();
-                RCLCPP_INFO(this->get_logger(), "imuBuf_.back é mais velha que frame: tImg: %.9f, timuBuf_: %.9f", tImg, Utility::StampToSec(imuBuf_.back()->header.stamp));
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue; 
-            }
-
-            auto it = imuBuf_.begin();
-            auto it_erase_end = imuBuf_.begin();
-
-            for (; it != imuBuf_.end(); ++it)
+            while (imuBuf_.size() >= 2)
             {
-                auto imu = *it;
-                double t = Utility::StampToSec(imu->header.stamp);
+                auto imu0 = imuBuf_.front();
+                imuBuf_.pop();
 
-                cv::Point3f acc(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
-                cv::Point3f gyr(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z);
+                auto imu1 = imuBuf_.front();
 
-                imuData.emplace_back(acc, gyr, t);
+                const double t0 = Utility::StampToSec(imu0->header.stamp);
+                const double t1 = Utility::StampToSec(imu1->header.stamp);
 
-                // IMPORTANTE: Garantimos que coletamos dados até ultrapassar o frame (t > tImg)
-                // E também garantimos que coletamos ao menos 2 pontos para não gerar vetor incompleto.
-                if (t >= tImg && imuData.size() >= 5) {
-                    RCLCPP_INFO(this->get_logger(), "imuData montado até t>=tImg, %i pontos", imuData.size());
-                    it_erase_end = it; 
-                    imu_ready = true;
+                // descarta IMUs anteriores ao frame anterior
+                if (t1 <= tLastImg)
+                    continue;
+
+                // adiciona medida real
+                if (t0 > tLastImg && t0 <= tImg)
+                {
+                    imuData.emplace_back(
+                        cv::Point3f(
+                            imu0->linear_acceleration.x,
+                            imu0->linear_acceleration.y,
+                            imu0->linear_acceleration.z),
+                        cv::Point3f(
+                            imu0->angular_velocity.x,
+                            imu0->angular_velocity.y,
+                            imu0->angular_velocity.z),
+                        t0);
+                }
+
+                // intervalo contém o instante do frame?
+                if (t0 < tImg && t1 >= tImg)
+                {
+                    const double alpha = (tImg - t0) / (t1 - t0);
+
+                    cv::Point3f acc0(
+                        imu0->linear_acceleration.x,
+                        imu0->linear_acceleration.y,
+                        imu0->linear_acceleration.z);
+
+                    cv::Point3f acc1(
+                        imu1->linear_acceleration.x,
+                        imu1->linear_acceleration.y,
+                        imu1->linear_acceleration.z);
+
+                    cv::Point3f gyr0(
+                        imu0->angular_velocity.x,
+                        imu0->angular_velocity.y,
+                        imu0->angular_velocity.z);
+
+                    cv::Point3f gyr1(
+                        imu1->angular_velocity.x,
+                        imu1->angular_velocity.y,
+                        imu1->angular_velocity.z);
+
+                    cv::Point3f acc =
+                        acc0 * (1.0 - alpha) + acc1 * alpha;
+
+                    cv::Point3f gyr =
+                        gyr0 * (1.0 - alpha) + gyr1 * alpha;
+
+                    imuData.emplace_back(acc, gyr, tImg);
+
+                    // mantém imu1 para o próximo frame
                     break;
                 }
             }
-
-            // Se coletamos tudo e mesmo assim não achamos um ponto >= tImg, 
-            // significa que a IMU ainda está ligeiramente atrasada no tempo físico.
-            if (!imu_ready) {
-                lock.unlock();
-                RCLCPP_INFO(this->get_logger(), "imuData não chegou a alcançar ou ultrapassar tImg");
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                continue;
-            }
-
-            // Apaga os elementos antigos que ficaram para trás do ponto de corte
-            if (it_erase_end != imuBuf_.begin()) {
-                imuBuf_.erase(imuBuf_.begin(), it_erase_end);
-                RCLCPP_INFO(this->get_logger(), "Buffer consumido: imuBuf_.size(): %zu", imuBuf_.size());
-            }
         }
 
-        // Se falhar nessa validação física de tamanho, preservamos a imagem e tentamos no próximo ciclo
-        if (imuData.size() < 5) {
-            RCLCPP_INFO(this->get_logger(), "imuData muito pequeno: %i", imuData.size());
+        if (imuData.size() < 2)
+        {
             continue;
         }
 
-        // =========================
-        // 3. VALIDATE DT CONSISTENCY
-        // =========================
-        bool dt_ok = true;
-        for (size_t i = 1; i < imuData.size(); i++)
+        bool ok = true;
+
+        for (size_t i = 1; i < imuData.size(); ++i)
         {
             double dt = imuData[i].t - imuData[i - 1].t;
+
             if (!std::isfinite(dt) || dt <= 0.0)
             {
-                RCLCPP_ERROR(this->get_logger(), "BAD IMU DT DETECTED: %f", dt);
-                dt_ok = false;
+                ok = false;
                 break;
             }
         }
-        if (!dt_ok) continue;
-        
-        //Retira a imagem do buffer, já que passaram todas checagens
-        {
-            std::unique_lock<std::mutex> lock(bufImgMutex_);
-            if (!imgBuf_.empty()) {
-                imgBuf_.pop();
-            }
-        }
 
-        // =========================
-        // 4. RUN SLAM
-        // =========================
-        try {
-            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%zu pontos): tLastImg: %.9f, tImg: %.9f \ntimufront: %.9f, timuback: %.9f", imuData.size(), tLastImg, tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
+        if (!ok)
+            continue;
+
+        try
+        {
             m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
             tLastImg = tImg;
         }
-        catch (const std::exception &e) {
-            RCLCPP_ERROR(this->get_logger(), "SLAM error: %s", e.what());
+        catch (const std::exception &e)
+        {
+            RCLCPP_ERROR(this->get_logger(), "%s", e.what());
         }
     }
 }
