@@ -68,7 +68,7 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
     //RCLCPP_INFO(this->get_logger(), "GrabImage chamada");
     //msg->header.stamp = this->get_clock()->now();
     bufImgMutex_.lock();
-    imgBuf_.push(msg);
+    imgBuf_.push_back(msg);
     bufImgMutex_.unlock();
     //RCLCPP_INFO(this->get_logger(), "Mensagem câmera recebida");
 }
@@ -105,11 +105,10 @@ void MonoInertialNode::SyncWithImu_Track()
 
     while (rclcpp::ok())
     {
-        ImageMsg::SharedPtr img;
-
-        //--------------------------
+        //----------------------------------------
         // 1. GET IMAGE
-        //--------------------------
+        //----------------------------------------
+        ImageMsg::SharedPtr img;
         {
             std::unique_lock<std::mutex> lock(bufImgMutex_);
 
@@ -126,13 +125,28 @@ void MonoInertialNode::SyncWithImu_Track()
 
         const double tImg = Utility::StampToSec(img->header.stamp);
 
-        // Primeiro frame: apenas memoriza o tempo
         if (tLastImg < 0.0)
         {
             tLastImg = tImg;
             continue;
         }
 
+        //----------------------------------------
+        // 2. WAIT UNTIL IMU REACHES IMAGE TIME
+        //----------------------------------------
+        {
+            std::unique_lock<std::mutex> lock(bufImuMutex_);
+
+            if (imuBuf_.size() < 2 ||
+                Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg)
+            {
+                continue;
+            }
+        }
+
+        //----------------------------------------
+        // 3. BUILD IMU VECTOR
+        //----------------------------------------
         std::vector<ORB_SLAM3::IMU::Point> imuData;
 
         {
@@ -140,19 +154,24 @@ void MonoInertialNode::SyncWithImu_Track()
 
             while (imuBuf_.size() >= 2)
             {
-                auto imu0 = imuBuf_.front();
-                imuBuf_.pop();
-
-                auto imu1 = imuBuf_.front();
+                auto imu0 = imuBuf_[0];
+                auto imu1 = imuBuf_[1];
 
                 const double t0 = Utility::StampToSec(imu0->header.stamp);
                 const double t1 = Utility::StampToSec(imu1->header.stamp);
 
-                // descarta IMUs anteriores ao frame anterior
+                //----------------------------------
+                // discard IMUs older than last image
+                //----------------------------------
                 if (t1 <= tLastImg)
+                {
+                    imuBuf_.pop_front();
                     continue;
+                }
 
-                // adiciona medida real
+                //----------------------------------
+                // add real measurement
+                //----------------------------------
                 if (t0 > tLastImg && t0 <= tImg)
                 {
                     imuData.emplace_back(
@@ -167,10 +186,12 @@ void MonoInertialNode::SyncWithImu_Track()
                         t0);
                 }
 
-                // intervalo contém o instante do frame?
-                if (t0 < tImg && t1 >= tImg)
+                //----------------------------------
+                // reached frame time?
+                //----------------------------------
+                if (t0 <= tImg && t1 >= tImg)
                 {
-                    const double alpha = (tImg - t0) / (t1 - t0);
+                    double alpha = (tImg - t0) / (t1 - t0);
 
                     cv::Point3f acc0(
                         imu0->linear_acceleration.x,
@@ -193,25 +214,30 @@ void MonoInertialNode::SyncWithImu_Track()
                         imu1->angular_velocity.z);
 
                     cv::Point3f acc =
-                        acc0 * (1.0 - alpha) + acc1 * alpha;
+                        acc0 * (1.0f - alpha) + acc1 * alpha;
 
                     cv::Point3f gyr =
-                        gyr0 * (1.0 - alpha) + gyr1 * alpha;
+                        gyr0 * (1.0f - alpha) + gyr1 * alpha;
 
                     imuData.emplace_back(acc, gyr, tImg);
 
-                    // mantém imu1 para o próximo frame
                     break;
                 }
+
+                //----------------------------------
+                // consume imu0
+                //----------------------------------
+                imuBuf_.pop_front();
             }
         }
 
+        //----------------------------------------
+        // 4. VALIDATION
+        //----------------------------------------
         if (imuData.size() < 2)
-        {
             continue;
-        }
 
-        bool ok = true;
+        bool valid = true;
 
         for (size_t i = 1; i < imuData.size(); ++i)
         {
@@ -219,14 +245,17 @@ void MonoInertialNode::SyncWithImu_Track()
 
             if (!std::isfinite(dt) || dt <= 0.0)
             {
-                ok = false;
+                valid = false;
                 break;
             }
         }
 
-        if (!ok)
+        if (!valid)
             continue;
 
+        //----------------------------------------
+        // 5. TRACK
+        //----------------------------------------
         try
         {
             m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
