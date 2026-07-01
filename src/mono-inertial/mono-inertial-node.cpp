@@ -132,6 +132,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // 1. Garante que temos dados suficientes no buffer geral para tomar uma decisão
             if (imuBuf_.size() < 2 || Utility::StampToSec(imuBuf_.back()->header.stamp) < tImg) {
                 lock.unlock();
+                RCLCPP_INFO(this->get_logger, "imuBuf_.back é mais velha que frame: tImg: %d, timuBuf_: %d", tImg, Utility::StampToSec(imuBuf_.back()->header.stamp));
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue; 
             }
@@ -152,6 +153,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 // IMPORTANTE: Garantimos que coletamos dados até ultrapassar o frame (t > tImg)
                 // E também garantimos que coletamos ao menos 2 pontos para não gerar vetor incompleto.
                 if (t >= tImg && imuData.size() >= 2) {
+                    RCLCPP_INFO(this->get_logger(), "imuData montado até t>=tImg");
                     it_erase_end = it; 
                     imu_ready = true;
                     break;
@@ -162,6 +164,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // significa que a IMU ainda está ligeiramente atrasada no tempo físico.
             if (!imu_ready) {
                 lock.unlock();
+                RCLCPP_INFO(this->get_logger(), "imuData não chegou a alcançar ou ultrapassar tImg");
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
@@ -174,6 +177,7 @@ void MonoInertialNode::SyncWithImu_Track()
 
         // Se falhar nessa validação física de tamanho, preservamos a imagem e tentamos no próximo ciclo
         if (imuData.size() < 2) {
+            RCLCPP_INFO(this->get_logger(), "imuData muito pequeno: %i", imuData.size());
             continue;
         }
 
@@ -197,6 +201,7 @@ void MonoInertialNode::SyncWithImu_Track()
         // 4. RUN SLAM
         // =========================
         try {
+            RCLCPP_INFO(this->get_logger(), "Enviando frame e vetor IMU (%i pontos): tImg: %d, timufront: %d, timuback: %d", tImg, imuData[0].t, imuData[(int) imuData.size()-1].t);
             m_SLAM->TrackMonocular(GetImage(img), tImg, imuData);
         }
         catch (const std::exception &e) {
