@@ -172,6 +172,7 @@ void MonoInertialNode::SyncWithImu_Track()
             // Apaga os elementos antigos que ficaram para trás do ponto de corte
             if (it_erase_end != imuBuf_.begin()) {
                 imuBuf_.erase(imuBuf_.begin(), it_erase_end);
+                RCLCPP_INFO(this->get_logger(), "Buffer consumido: imuBuf_.size(): %zu", imuBuf_.size());
             }
         }
 
