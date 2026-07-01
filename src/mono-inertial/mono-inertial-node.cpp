@@ -160,6 +160,7 @@ void MonoInertialNode::SyncWithImu_Track()
                 const double t0 = Utility::StampToSec(imu0->header.stamp);
                 const double t1 = Utility::StampToSec(imu1->header.stamp);
 
+                RCLCPP_INFO(this->get_logger(), "dt IMU: %.9f", (t1-t0));
                 //----------------------------------
                 // discard IMUs older than last image
                 //----------------------------------
@@ -253,6 +254,7 @@ void MonoInertialNode::SyncWithImu_Track()
         if (!valid)
             continue;
 
+        RCLCPP_INFO(this->get_logger(), "dt Frames: %.9f", (tImg-tLastImg));
         //----------------------------------------
         // 5. TRACK
         //----------------------------------------
