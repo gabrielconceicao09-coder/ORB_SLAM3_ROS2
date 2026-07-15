@@ -1,4 +1,6 @@
 # ORB_SLAM3_ROS2
+Fork feito para criar o nó mono-inertial, baseado nos outros nós do pacote. Os pacotes de medições IMU enviados juntos a cada frame da câmera devem englobar o intervalo entre o último frame e o frame atual. Devido ao setup de hardware de difícil sincronização, a lógica de temporização do nó teve de ser complicada. Ainda assim, não chegou a funcionar.
+
 This repository is ROS2 wrapping to use ORB_SLAM3
 
 ---
